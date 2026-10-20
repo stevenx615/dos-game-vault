@@ -4,9 +4,9 @@
     <AssemblyName>DOSGameVault</AssemblyName>
     <Product>DOS Game Vault</Product>
     <AssemblyTitle>DOS Game Vault</AssemblyTitle>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
     <TargetFramework Condition="'$(LauncherFramework)' == ''">net10.0-windows</TargetFramework>
     <TargetFramework Condition="'$(LauncherFramework)' != ''">$(LauncherFramework)</TargetFramework>
     <UseWPF>true</UseWPF>
@@ -15,7 +15,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup><Content Include="Languages/*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
-  <ItemGroup><Resource Include="Assets/dos_game_vault-original.png" /><Resource Include="Assets/app.ico" /></ItemGroup>
+  <ItemGroup><Resource Include="Assets/dos_game_vault-original.png" /><Resource Include="Assets/app.ico" /><Resource Include="Assets/logo.png" /><Resource Include="Assets/logo-header.png" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../../data/game-list.json" LogicalName="DOSGameVault.GameCatalog.json" /></ItemGroup>
 </Project>
 
