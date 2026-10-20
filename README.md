@@ -1,13 +1,17 @@
 
-# DOS Game Vault
+<p align="center">
+  <img width="466" height="69" alt="logo-middle" src="https://github.com/user-attachments/assets/1aa4bbc5-2f09-4adf-bb1b-7d78a45682b7" />
+</p>
 
-DOS Game Vault is a Windows application for organizing and playing DOS games through DOSBox, with support for **English and Simplified Chinese**.
+## 
+
+DOS Game Vault is a Windows application for organizing and playing DOS games through DOSBox, with support for **English and Simplified Chinese**. 
 
 Browse your collection, manage favorites and cover artwork, and customize how each game launches. 
 
 **Game files, DOSBox, and cover images are not included.**
 
-<img width="1650" height="1031" alt="DOSGameVault-preview1" src="https://github.com/user-attachments/assets/9aa17729-61d9-4d82-8375-95c73e2ee61f" />
+<img width="1650" height="1031" alt="dosgamevault-preview2" src="https://github.com/user-attachments/assets/30e6296f-c4a6-4f2c-b049-eaf100b239e5" />
 
 ## Download and start
 
@@ -43,4 +47,3 @@ DOSGames/
 - **DOSBox is missing:** register its executable in Settings and choose a default version.
 - **A game was not recognized:** look in Unsorted and verify its startup program, or add it individually.
 - **Covers are missing after reinstalling:** select the original cover folder and rescan. Keep `_cover_index.json` with the images.
-**
