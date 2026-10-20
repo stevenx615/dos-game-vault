@@ -1,0 +1,36 @@
+<Window x:Class="DOSGameVault.MoveLibraryDialog"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:DOSGameVault" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+ Title="{local:Loc Key=T89cabc5e6253}" Width="620" SizeToContent="Height"
+ WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+ ShowInTaskbar="False" Background="#151827" Foreground="#E6E8F1"
+ FontFamily="Segoe UI, Microsoft YaHei" FocusManager.FocusedElement="{Binding ElementName=CancelButton}"><Window.Resources><Style TargetType="Button" BasedOn="{StaticResource ModalButton}"/></Window.Resources>
+ <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="0" CornerRadius="18" GlassFrameThickness="0" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
+ <local:RoundedBorder CornerRadius="18" BorderBrush="#30394F" BorderThickness="1" Padding="1" Background="#151827">
+  <Grid>
+   <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <Border Background="#1C2032" BorderBrush="Transparent" BorderThickness="0,0,0,1" MouseLeftButtonDown="DragHeader">
+    <DockPanel Margin="18,0,10,0"><Button DockPanel.Dock="Right" Content="×" IsCancel="True" BorderThickness="0" Padding="12,3" FontSize="21" VerticalAlignment="Center" ToolTip="{local:Loc Key=T19766ed6ccb2}" AutomationProperties.Name="{local:Loc Key=Td2252166e49d}"/><TextBlock Text="{local:Loc Key=Te0dfe19f1887}" FontFamily="Consolas, Microsoft YaHei" FontSize="12" Foreground="#284FB8" VerticalAlignment="Center"/></DockPanel>
+   </Border>
+   <StackPanel Grid.Row="1" Margin="26,24,26,22">
+    <TextBlock Text="{local:Loc Key=T41efd7a2759a}" FontSize="25" FontWeight="SemiBold" Foreground="#E6E8F1"/>
+    <TextBlock Text="{local:Loc Key=T06050e02c8b7}" Foreground="#869BAF" Margin="0,9,0,22"/>
+    <TextBlock Text="{local:Loc Key=Td32863fa1e49}" FontFamily="Consolas, Microsoft YaHei" FontSize="10" Foreground="#758899" Margin="0,0,0,7"/>
+    <TextBox Text="{Binding SourcePath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderBrush="Transparent" FontFamily="Consolas, Microsoft YaHei" FontSize="12" AutomationProperties.Name="{local:Loc Key=T249cc3c08998}"/>
+    <TextBlock Text="↓" FontSize="23" Foreground="#284FB8" HorizontalAlignment="Center" Margin="0,9"/>
+    <TextBlock Text="{local:Loc Key=T51ac005a54f5}" FontFamily="Consolas, Microsoft YaHei" FontSize="10" Foreground="#758899" Margin="0,0,0,7"/>
+    <TextBox Text="{Binding DestinationPath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderBrush="Transparent" FontFamily="Consolas, Microsoft YaHei" FontSize="12" AutomationProperties.Name="{local:Loc Key=Ta5d792aee287}"/>
+    <Border Background="#121622" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="13" Margin="0,20,0,0"><TextBlock Text="{local:Loc Key=T1bdac7f92fc1}" TextWrapping="Wrap" Foreground="#95ACC2" FontSize="12"/></Border>
+   </StackPanel>
+   <Border Grid.Row="2" BorderBrush="Transparent" BorderThickness="0,1,0,0" Padding="26,16" Background="#1C2032"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button x:Name="CancelButton" Content="{local:Loc Key=Tad8d698573fc}" IsCancel="True" IsDefault="True" MinWidth="105" Margin="0,0,10,0"/><Button x:Name="ConfirmMoveButton" Content="{local:Loc Key=T1a221ff2c524}" Click="ConfirmMove" MinWidth="150" Foreground="White" BorderBrush="#30394F" Background="#284FB8" FontWeight="SemiBold"/></StackPanel></Border>
+  </Grid>
+ </local:RoundedBorder>
+</Window>
+
+
+
+
+
+
+
+
