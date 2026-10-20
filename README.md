@@ -1,3 +1,4 @@
+
 # DOS Game Vault
 
 DOS Game Vault is a Windows application for organizing and playing DOS games through DOSBox, with support for **English and Simplified Chinese**.
@@ -5,6 +6,8 @@ DOS Game Vault is a Windows application for organizing and playing DOS games thr
 Browse your collection, manage favorites and cover artwork, and customize how each game launches. 
 
 **Game files, DOSBox, and cover images are not included.**
+
+<img width="1650" height="1031" alt="DOSGameVault-preview1" src="https://github.com/user-attachments/assets/9aa17729-61d9-4d82-8375-95c73e2ee61f" />
 
 ## Download and start
 
