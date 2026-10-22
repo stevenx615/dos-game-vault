@@ -17,5 +17,8 @@
   <ItemGroup><Content Include="Languages/*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Resource Include="Assets/dos_game_vault-original.png" /><Resource Include="Assets/app.ico" /><Resource Include="Assets/logo.png" /><Resource Include="Assets/logo-header.png" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../../data/game-list.json" LogicalName="DOSGameVault.GameCatalog.json" /></ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <AssemblyMetadata Include="DeveloperCatalogPath" Value="$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../data/game-list.json'))" />
+  </ItemGroup>
 </Project>
 

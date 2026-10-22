@@ -16,6 +16,12 @@ public static class CoverMatching
     }
     private static Dictionary<string,string> ReadIndex(string folder)
     {
+        var previews=Path.Combine(folder,PreviewStorage.IndexName);
+        if(File.Exists(previews))
+        {
+            var entries=JsonSerializer.Deserialize<Dictionary<string,PreviewStorage.Entry>>(File.ReadAllText(previews));
+            return entries?.Where(entry=>entry.Value.Cover!=null).ToDictionary(entry=>entry.Key,entry=>entry.Value.Cover!,StringComparer.OrdinalIgnoreCase) ?? new(StringComparer.OrdinalIgnoreCase);
+        }
         var file=Path.Combine(folder,IndexName);
         var data=File.Exists(file)?JsonSerializer.Deserialize<Dictionary<string,string>>(File.ReadAllText(file)):null;
         return data is null?new(StringComparer.OrdinalIgnoreCase):new(data,StringComparer.OrdinalIgnoreCase);

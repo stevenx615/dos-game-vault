@@ -6,6 +6,11 @@ using System.Windows.Media.Imaging;
 namespace DOSGameVault;
 public sealed partial class MainViewModel
 {
+    public System.Collections.ObjectModel.ObservableCollection<LibraryFilter> EditGenreChoices { get; } =
+    [new("", "Uncategorized", 0), new("ACT", "Action", 0), new("AVG", "Adventure", 0), new("RPG", "Role-playing", 0),
+     new("SLG", "Strategy", 0), new("SIM", "Simulation", 0), new("PUZ", "Puzzle", 0), new("HGA", "Other", 0)];
+    private string editCategory = "";
+    public string EditCategory { get => editCategory; set { value ??= "";if(editCategory==value)return;Set(ref editCategory,value);ScheduleGameSave(); } }
     private readonly SemaphoreSlim saveLock = new(1, 1);
     private double cardWidth = 165;
     public double CardWidth { get => cardWidth; set { Set(ref cardWidth, Math.Clamp(value, 125, 220)); Notify(nameof(CoverHeight)); Notify(nameof(CardDisplayWidth)); Notify(nameof(GridItemWidth)); ScheduleSettingsSave(); } }
@@ -60,6 +65,7 @@ public sealed partial class MainViewModel
     public ICommand BasicProfileCommand { get; private set; } = null!;
     private void InitializePlayerCommands()
     {
+        InitializeScreenshotCommands();
         OpenGameFolderCommand = new AsyncCommand(() => RunAsync(() =>
         {
             if (SelectedGame is not { } game) return Task.CompletedTask;
@@ -98,6 +104,10 @@ public sealed partial class MainViewModel
         loadingGameEdits = true;
         try {
         var game = SelectedGame;
+        var category=GenreCatalog.Key(game?.Category);
+        var genre=EditGenreChoices.FirstOrDefault(choice=>choice.Key.Equals(category,StringComparison.OrdinalIgnoreCase));
+        if(genre==null) { genre=new(category,game!.Genre,0);EditGenreChoices.Add(genre); }
+        EditCategory=genre.Key;
         EditEnglishName=game?.EnglishName ?? ""; EditChineseName=game?.ChineseName ?? "";
         EditAlternateTitle = game?.AlternateTitle ?? ""; EditControls = game?.Controls ?? ""; EditNotes = game?.Notes ?? "";
         EditCoverPath = game?.CoverOverride ?? ""; EditManualPath = game?.ManualPath ?? "";
@@ -171,12 +181,13 @@ public sealed partial class MainViewModel
         if(coverPath.Length>0 && !coverPath.Equals(game.CoverOverride,StringComparison.OrdinalIgnoreCase))
         {
             if(string.IsNullOrWhiteSpace(GameCoverFolder)) throw new InvalidOperationException("Choose a game collection folder or game cover folder in Settings before adding a cover image.");
-            coverPath=CoverStorage.Copy(coverPath,GameCoverFolder,string.IsNullOrWhiteSpace(EditEnglishName) ? game.FolderName : EditEnglishName.Trim(),CoverMatching.GameKey(game));
+            coverPath=PreviewStorage.Copy(coverPath,GameCoverFolder,string.IsNullOrWhiteSpace(EditEnglishName) ? game.FolderName : EditEnglishName.Trim());
         }
         var backup = JsonSerializer.Deserialize<GameEntry>(JsonSerializer.Serialize(game))!;
         game.EmulatorVersion = GameVersionSelection?.Key ?? "";
         game.EnglishName=EditEnglishName.Trim();game.ChineseName=EditChineseName.Trim();
         game.Title = EditTitle.Trim(); game.Description = EditDescription; game.AlternateTitle = EditAlternateTitle.Trim();
+        if(!GenreCatalog.Key(game.Category).Equals(EditCategory,StringComparison.OrdinalIgnoreCase))game.Category = EditCategory;
         game.Controls = EditControls; game.Notes = EditNotes; game.ManualPath = EditManualPath.Trim(); game.CoverOverride = coverPath;
         game.ExecutablePath = EditExecutablePath.Trim(); game.LaunchProfile = profile;
         try { await PersistAsync(); }
@@ -218,7 +229,9 @@ public sealed partial class MainViewModel
             settings.Search = Search; settings.PageSize = PageSize; settings.PageIndex = pageIndex; settings.SelectedGameId = SelectedGame?.Id; settings.CardWidth = CardWidth; settings.GridColumns=GridColumns; settings.GameCardSize=GameCardSize;
             settings.GenreKey = GenreSelection?.Key ?? "allgenres";
             settings.ShowGameInfoPanel = ShowGameInfoPanel; settings.ShowGameTitles = ShowGameTitles; settings.IsSidebarExpanded=IsSidebarExpanded; settings.ShowBlurredCoverBackground=ShowBlurredCoverBackground; settings.UiScale = UiScale;
-            await store.SaveAsync(new LibraryData { Games = Games.ToList(), Settings = settings });
+            var rollbackIndex = PreviewStorage.WriteIndex(GameCoverFolder, Games);
+            try { await store.SaveAsync(new LibraryData { Games = Games.ToList(), Settings = settings }); }
+            catch { rollbackIndex(); throw; }
         }
         finally { saveLock.Release(); }
     }

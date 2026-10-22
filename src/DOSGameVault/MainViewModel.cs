@@ -234,6 +234,7 @@ public sealed partial class MainViewModel : Observable
     }
     private void UpdateLibrary()
     {
+        RefreshGenreManager();
         var key = ActiveFilter?.Key ?? "all";
         CollectionFilters.Clear();
         CollectionFilters.Add(new("all", "All Games", Games.Count));
@@ -288,6 +289,7 @@ public sealed partial class MainViewModel : Observable
             try { var game = GameImport.Create(path, Games); Games.Add(game); imported.Add(game); }
             catch (Exception ex) { errors.Add(ex.Message); }
         }
+        RestorePreviewLinks(imported);
         try { await PersistAsync(); }
         catch { foreach (var game in imported) Games.Remove(game); UpdateLibrary(); throw; }
         SelectedGame = imported.LastOrDefault() ?? SelectedGame; UpdateLibrary();

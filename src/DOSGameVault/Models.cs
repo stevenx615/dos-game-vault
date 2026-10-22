@@ -16,6 +16,7 @@ public sealed class GameEntry : Observable
     public string Controls { get; set; } = "";
     public string Notes { get; set; } = "";
     public string ManualPath { get; set; } = "";
+    public System.Collections.ObjectModel.ObservableCollection<string> Screenshots { get; set; } = [];
     [System.Text.Json.Serialization.JsonIgnore] public string ManualFile
     {
         get
@@ -30,6 +31,8 @@ public sealed class GameEntry : Observable
     public string EmulatorVersion { get; set; } = "";
     private readonly object coverLock = new();
     private string coverOverride = "";
+    private bool hideAutomaticCover;
+    public bool HideAutomaticCover { get => hideAutomaticCover; set { hideAutomaticCover = value; lock(coverLock) { coverChecked = false; } Notify(nameof(CoverPath)); } }
     public string CoverOverride { get => coverOverride; set { lock(coverLock) { coverOverride = value; coverChecked = false; } Notify(nameof(CoverPath)); } }
     [System.Text.Json.Serialization.JsonIgnore] public string DisplayTitle
     {
@@ -97,7 +100,8 @@ public sealed class GameEntry : Observable
     [System.Text.Json.Serialization.JsonIgnore] public string MissingStartupFileMessage => "Cannot find the file that starts this game: " + ProgramLocation + ". Open Game Settings and choose its EXE, COM, or BAT file, or check the game folder in Settings.";
     public void RefreshStartupFileStatus(){var state=System.IO.File.Exists(ExecutablePath)?0:1;if(System.Threading.Interlocked.Exchange(ref startupFileState,state)!=state){Notify(nameof(IsStartupFileMissing));Notify(nameof(ShowMissingStartupAlert));}}
     public bool IsUnsorted { get; set; }
-    public string Category { get; set; } = "";
+    private string category = "";
+    public string Category { get => category; set { Set(ref category,value); Notify(nameof(Genre)); Notify(nameof(CoverColor)); } }
     public string CollectionRoot { get; set; } = "";
     public string MediaType { get; set; } = "";
     public string MediaPath { get; set; } = "";
@@ -106,7 +110,14 @@ public sealed class GameEntry : Observable
     public DateTimeOffset DateAdded { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastPlayed { get; set; }
     [System.Text.Json.Serialization.JsonIgnore] public string FavoriteGlyph => IsFavorite ? "\uEB52" : "\uEB51";
-    [System.Text.Json.Serialization.JsonIgnore] public string Genre => Category.ToUpperInvariant() switch
+    private IReadOnlyDictionary<string,string>? genreNames;
+    public void SetGenreNames(IReadOnlyDictionary<string,string> names)
+    {
+        if(ReferenceEquals(genreNames,names))return;
+        genreNames=names;Notify(nameof(Genre));
+    }
+    [System.Text.Json.Serialization.JsonIgnore] public string Genre => genreNames?.GetValueOrDefault(GenreCatalog.Key(Category)) ?? DefaultGenre;
+    [System.Text.Json.Serialization.JsonIgnore] public string DefaultGenre => Category.ToUpperInvariant() switch
     {
         "ACT" => "Action", "AVG" => "Adventure", "RPG" => "Role-playing", "SLG" or "RTS" or "SPG" => "Strategy",
         "SIM" => "Simulation", "PUZ" => "Puzzle", "HGA" => "Other", _ => string.IsNullOrEmpty(Category) ? "Uncategorized" : Category
@@ -114,7 +125,7 @@ public sealed class GameEntry : Observable
     [System.Text.Json.Serialization.JsonIgnore] public string FolderName => System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(ExecutablePath)) ?? "DOS";
     [System.Text.Json.Serialization.JsonIgnore] public string ProgramName => System.IO.Path.GetFileName(ExecutablePath);
     [System.Text.Json.Serialization.JsonIgnore] public string ProgramLocation => System.IO.Path.Combine(FolderName, ProgramName);
-    [System.Text.Json.Serialization.JsonIgnore] public string CoverColor => Genre switch
+    [System.Text.Json.Serialization.JsonIgnore] public string CoverColor => DefaultGenre switch
     {
         "Action" => "#39261F", "Adventure" => "#243239", "Role-playing" => "#30273C", "Strategy" => "#34321F",
         "Simulation" => "#1D3530", "Puzzle" => "#263044", _ => "#28352A"
@@ -130,6 +141,7 @@ public sealed class GameEntry : Observable
             if (coverChecked) return coverPath;
             coverChecked = true;
             if (System.IO.File.Exists(CoverOverride)) return coverPath = CoverOverride;
+            if (HideAutomaticCover) return coverPath = null;
             var folder = System.IO.Path.GetDirectoryName(ExecutablePath);
             if (folder is null) return null;
             coverPath = new[] { "cover.jpg", "cover.png", "folder.jpg", "folder.png", "box.jpg", "box.png" }
@@ -149,6 +161,7 @@ public sealed class LaunchProfile
 }
 public sealed class AppSettings
 {
+    public List<GenreDefinition> Genres { get; set; } = GenreCatalog.Defaults();
     public string Language { get; set; } = "EN";
     public bool HasScannedGameFolder { get; set; }
     public bool FirstLaunchGuideCompleted { get; set; }

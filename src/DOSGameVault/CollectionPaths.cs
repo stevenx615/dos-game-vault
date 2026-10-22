@@ -25,6 +25,7 @@ public static class CollectionPaths
                 game.CollectionRoot = destination;
                 game.CoverOverride = RebasePath(game.CoverOverride);
                 game.ManualPath = RebasePath(game.ManualPath);
+                for (var i = 0; i < game.Screenshots.Count; i++) game.Screenshots[i] = RebasePath(game.Screenshots[i]);
                 if (game.LaunchProfile != null) game.LaunchProfile.EmulatorPath = RebasePath(game.LaunchProfile.EmulatorPath);
             }
             foreach (var version in data.Settings.Emulators)

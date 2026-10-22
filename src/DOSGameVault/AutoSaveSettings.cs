@@ -21,7 +21,19 @@ public sealed partial class MainViewModel
     }
     private void RefreshLocalizedGameNames()
     {
+        var selectedGenreKey=genreNames.FirstOrDefault(pair=>pair.Value==GenreSelection?.Label).Key;
+        var activeGenreKey=ActiveFilter?.Key.StartsWith("genre:",StringComparison.Ordinal)==true
+            ? genreNames.FirstOrDefault(pair=>pair.Value==ActiveFilter.Label).Key : null;
         foreach(var game in Games) game.RefreshDisplayTitle();
+        UpdateLibrary();
+        if(selectedGenreKey!=null && genreNames.TryGetValue(selectedGenreKey,out var label))
+        {
+            genreSelection=GenreChoices.FirstOrDefault(genre=>genre.Label==label);Notify(nameof(GenreSelection));
+        }
+        if(activeGenreKey!=null && genreNames.TryGetValue(activeGenreKey,out var activeLabel))
+        {
+            activeFilter=GenreFilters.FirstOrDefault(genre=>genre.Label==activeLabel);Notify(nameof(ActiveFilter));Notify(nameof(ViewTitle));
+        }
         ApplySortWithoutPaging(); RefreshView();
     }
     public int SettingsTabIndex { get=>settingsTabIndex; set=>Set(ref settingsTabIndex,value); }

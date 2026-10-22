@@ -1,0 +1,17 @@
+<Window x:Class="DOSGameVault.GenreNameDialog" FontFamily="{StaticResource AppFont}"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:DOSGameVault"
+ WindowStartupLocation="CenterOwner" Width="430" SizeToContent="Height" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Background="#151827" Foreground="#E6E8F1">
+ <Window.Resources><Style TargetType="Button" BasedOn="{StaticResource ModalButton}"/></Window.Resources>
+ <local:RoundedBorder CornerRadius="16" Background="#151827" BorderBrush="#30394F" BorderThickness="1" Padding="24">
+  <StackPanel>
+   <TextBlock x:Name="Heading" FontSize="23" FontWeight="SemiBold" Margin="0,0,0,20"/>
+   <TextBlock Text="{local:Loc Key=GenreEnglishName}" Margin="0,0,0,8"/>
+   <TextBox x:Name="NameBox"/>
+   <TextBlock Text="{local:Loc Key=GenreChineseName}" Margin="0,16,0,8"/>
+   <TextBox x:Name="ChineseNameBox"/>
+   <TextBlock Text="{local:Loc Key=GenreChineseHint}" Foreground="#9198B4" TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0"/>
+   <TextBlock x:Name="ValidationError" Foreground="#FF9C9C" TextWrapping="Wrap" Margin="0,8,0,0"/>
+   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0"><Button Content="{local:Loc Key=T19766ed6ccb2}" IsCancel="True" MinWidth="90" Margin="0,0,8,0"/><Button x:Name="SaveButton" Content="{local:Loc Key=GenreRename}" IsDefault="True" Click="Save" MinWidth="100"/></StackPanel>
+  </StackPanel>
+ </local:RoundedBorder>
+</Window>

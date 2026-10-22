@@ -13,6 +13,10 @@ public static class SmoothScrolling
         "Enabled",typeof(bool),typeof(SmoothScrolling),new PropertyMetadata(false,Changed));
     public static bool GetEnabled(DependencyObject value)=>(bool)value.GetValue(EnabledProperty);
     public static void SetEnabled(DependencyObject value,bool enabled)=>value.SetValue(EnabledProperty,enabled);
+    public static readonly DependencyProperty ContainWheelProperty=DependencyProperty.RegisterAttached(
+        "ContainWheel",typeof(bool),typeof(SmoothScrolling),new PropertyMetadata(false));
+    public static bool GetContainWheel(DependencyObject value)=>(bool)value.GetValue(ContainWheelProperty);
+    public static void SetContainWheel(DependencyObject value,bool enabled)=>value.SetValue(ContainWheelProperty,enabled);
     private static readonly DependencyProperty StateProperty=DependencyProperty.RegisterAttached("State",typeof(State),typeof(SmoothScrolling));
     private static void Changed(DependencyObject value,DependencyPropertyChangedEventArgs args)
     {
@@ -51,12 +55,17 @@ public static class SmoothScrolling
             (delta>0?scroll.VerticalOffset>0:scroll.VerticalOffset<scroll.ScrollableHeight);
         private void Wheel(object sender,MouseWheelEventArgs args)
         {
-            if(args.Handled || args.Delta==0 || SystemParameters.WheelScrollLines==0 || !CanScroll(viewer,args.Delta))return;
+            if(args.Handled || args.Delta==0)return;
             // Let an inner scrollable field or popup handle its own wheel input first.
             for(var node=args.OriginalSource as DependencyObject;node!=null && node!=viewer;)
             {
-                if(node is ScrollViewer inner && CanScroll(inner,args.Delta))return;
+                if(node is ScrollViewer inner && (GetContainWheel(inner) || CanScroll(inner,args.Delta)))return;
                 node=node is Visual or System.Windows.Media.Media3D.Visual3D?VisualTreeHelper.GetParent(node):LogicalTreeHelper.GetParent(node);
+            }
+            if(SystemParameters.WheelScrollLines==0 || !CanScroll(viewer,args.Delta))
+            {
+                if(GetContainWheel(viewer))args.Handled=true;
+                return;
             }
             var distance=SystemParameters.WheelScrollLines<0?viewer.ViewportHeight:SystemParameters.WheelScrollLines*40d;
             target=Math.Clamp((running?target:viewer.VerticalOffset)-args.Delta/120d*distance,0,viewer.ScrollableHeight);

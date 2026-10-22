@@ -6,6 +6,10 @@ public static class GameScanner
 {
     public static LibraryData LoadCatalog()
     {
+#if DEBUG
+        var development=Path.Combine(AppContext.BaseDirectory,"game-list.development.json");
+        if(File.Exists(development))return JsonSerializer.Deserialize<LibraryData>(File.ReadAllText(development)) ?? throw new InvalidDataException("The development game list is invalid.");
+#endif
         using var stream=typeof(GameScanner).Assembly.GetManifestResourceStream("DOSGameVault.GameCatalog.json") ?? throw new FileNotFoundException("The bundled game list is missing.");
         return JsonSerializer.Deserialize<LibraryData>(stream) ?? throw new InvalidDataException("The game list is invalid.");
     }
@@ -44,6 +48,7 @@ public static class GameScanner
             game.IsFavorite=false;
             game.ExecutablePath=executable;game.CollectionRoot=root;
             game.CoverOverride=Relative(game.CoverOverride,oldRoot) is {} coverRelative ? Path.GetFullPath(Path.Combine(root,coverRelative)) : "";
+            for(var i=0;i<game.Screenshots.Count;i++)game.Screenshots[i]=Rebase(game.Screenshots[i],oldRoot);
             game.ManualPath=Rebase(game.ManualPath,oldRoot);
             if(game.LaunchProfile!=null)game.LaunchProfile.EmulatorPath=Rebase(game.LaunchProfile.EmulatorPath,oldRoot);
             game.IsUnsorted=false;Add(game);

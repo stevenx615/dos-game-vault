@@ -239,6 +239,7 @@ public interface IDesktopDialogs
     string? PickJsonLibrary() => null;
     string? PickCollectionRoot() => null;
     string? PickCover() => null;
+    string[] PickScreenshots() => [];
     string? PickCoverDirectory() => null;
     string? PickManual() => null;
     string? PickLibraryDirectory() => null;
@@ -247,6 +248,8 @@ public interface IDesktopDialogs
     bool ConfirmResetSettings() => false;
     bool ConfirmResetAppearance() => false;
     bool ConfirmRemoveCover() => false;
+    bool ConfirmRemoveGameImage(bool isCover) => false;
+    bool ConfirmDeleteGenre(string name,int games) => false;
     void ShowScanResults(GameScanResult result, int totalGames) { }
     bool ConfirmRemoveDefaultDosBox(string name) => false;
     EmulatorInstallation? PickDefaultDosBox(IReadOnlyList<EmulatorInstallation> versions) => null;
@@ -267,6 +270,11 @@ public interface IDesktopDialogs
 }
 public sealed class DesktopDialogs : IDesktopDialogs
 {
+    public bool ConfirmDeleteGenre(string name,int games)
+    {
+        var dialog=new DosBoxPromptDialog("Delete genre?",$"Remove {name}? {games} game(s) will be moved to Uncategorized.","Delete genre",destructive:true);
+        SetPromptOwner(dialog);return ModalWindows.Show(dialog)==true;
+    }
     private static string LocalizeFilter(string filter)
     {
         var parts=filter.Split('|');
@@ -288,6 +296,15 @@ public sealed class DesktopDialogs : IDesktopDialogs
     {
         var dialog=new DosBoxPromptDialog("Remove cover?", "Remove this custom cover? Its copied image in the cover folder will be deleted unless another game uses it. Original images outside the cover folder will be kept.", "Remove cover", destructive:true);
         SetPromptOwner(dialog);return ModalWindows.Show(dialog)==true;
+    }
+    public bool ConfirmRemoveGameImage(bool isCover)
+    {
+        var message = isCover
+            ? "Remove this cover from the game? The next image will become the cover. Original image files will be kept."
+            : "Remove this screenshot from the game? Original image files will be kept.";
+        var dialog = new DosBoxPromptDialog("Remove image?", message, "Remove image", destructive:true);
+        SetPromptOwner(dialog);
+        return ModalWindows.Show(dialog) == true;
     }
     public bool ConfirmResetAppearance()
     {
@@ -330,6 +347,11 @@ public sealed class DesktopDialogs : IDesktopDialogs
     {
         var dialog=new OpenFolderDialog { Title=Localization.Current.Translate("Select game cover folder") };
         return ModalWindows.Show(dialog)==true ? dialog.FolderName : null;
+    }
+    public string[] PickScreenshots()
+    {
+        var dialog = new OpenFileDialog { Title = Localization.Current.Translate("Add images"), Filter = "Images|*.jpg;*.jpeg;*.png;*.bmp", Multiselect = true };
+        return ModalWindows.Show(dialog) == true ? dialog.FileNames : [];
     }
     public string? PickCover() => PickFile("Select game cover", "Cover image|*.jpg;*.jpeg;*.png;*.bmp");
     public string? PickManual() => PickFile("Select game manual", "Manual|*.pdf;*.txt;*.htm;*.html;*.png;*.jpg");
