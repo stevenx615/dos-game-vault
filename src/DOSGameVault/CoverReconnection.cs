@@ -2,11 +2,28 @@ namespace DOSGameVault;
 
 public sealed partial class MainViewModel
 {
+    private bool RestorePreviewLinks(IEnumerable<GameEntry> games)
+    {
+        if(string.IsNullOrWhiteSpace(GameCoverFolder)) return false;
+        if(store is IRelocatableLibraryStore disk)
+            PreviewStorage.RecoverIndexFromBackups(GameCoverFolder,System.IO.Path.GetDirectoryName(disk.LibraryPath)!);
+        return PreviewStorage.Restore(GameCoverFolder,games);
+    }
     private Task<Dictionary<GameEntry,string>> FindCoverLinksAsync(IEnumerable<GameEntry> games)
     {
         var folder=GameCoverFolder;var entries=games.ToList();
-        if(string.IsNullOrWhiteSpace(folder) || !System.IO.Directory.Exists(folder))return Task.FromResult(new Dictionary<GameEntry,string>());
-        return Task.Run(()=>CoverMatching.Find(folder,entries));
+        if(!System.IO.Directory.Exists(folder) && (string.IsNullOrWhiteSpace(GameCollectionPath)
+            || !new[]{"_game_covers","_game_cover"}.Any(name=>System.IO.Directory.Exists(System.IO.Path.Combine(GameCollectionPath,name)))))
+            return Task.FromResult(new Dictionary<GameEntry,string>());
+        return Task.Run(()=>
+        {
+            var matches=CoverMatching.Find(folder,entries);
+            if(!string.IsNullOrWhiteSpace(GameCollectionPath))
+                foreach(var legacy in new[]{"_game_covers","_game_cover"})
+                    foreach(var match in CoverMatching.Find(System.IO.Path.Combine(GameCollectionPath,legacy),entries))
+                        matches.TryAdd(match.Key,match.Value);
+            return matches;
+        });
     }
     private Task RememberCoverLinksAsync()
     {
@@ -14,13 +31,6 @@ public sealed partial class MainViewModel
         var links=Games.Where(game=>!string.IsNullOrWhiteSpace(game.CoverOverride))
             .Select(game=>(Key:CoverMatching.GameKey(game),Cover:game.CoverOverride)).ToList();
         if(links.Count==0 || string.IsNullOrWhiteSpace(folder))return Task.CompletedTask;
-        return Task.Run(()=>CoverMatching.RememberMany(folder,links));
-    }
-    private async Task RestoreCoverLinksAsync()
-    {
-        var links=await FindCoverLinksAsync(Games);
-        foreach(var link in links)link.Key.CoverOverride=link.Value;
-        if(links.Count>0)await store.SaveAsync(new LibraryData{Games=Games.ToList(),Settings=settings});
-        await RememberCoverLinksAsync();
+        return Task.Run(()=> { PreviewStorage.WriteIndex(folder,Games); });
     }
 }

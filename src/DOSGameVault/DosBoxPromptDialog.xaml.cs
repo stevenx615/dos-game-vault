@@ -3,6 +3,7 @@ using System.Windows.Controls;
 namespace DOSGameVault;
 public partial class DosBoxPromptDialog : Window
 {
+    public bool DeleteFileSelected => DeleteFileCheckBox.IsChecked==true;
     public string Heading { get; }
     public string Message { get; }
     public string AcceptText { get; }
@@ -23,11 +24,12 @@ public partial class DosBoxPromptDialog : Window
         Message=$"Remove {name} from the registered versions and clear the default? Executable files will stay on disk. Games assigned to this version will need another version selected. You’ll be prompted for a default the next time a game needs one.";
         InitializeComponent(); DataContext=this;
     }
-    public DosBoxPromptDialog(string heading,string message,string acceptText,bool showCancel=true,bool destructive=false)
+    public DosBoxPromptDialog(string heading,string message,string acceptText,bool showCancel=true,bool destructive=false,bool showDeleteFile=false)
     {
         Versions=[]; PickerVisibility=Visibility.Collapsed;
         Heading=heading; Message=message; AcceptText=acceptText;
         InitializeComponent(); DataContext=this; AcceptButton.IsEnabled=true;
+        if(showDeleteFile) DeleteFileCheckBox.Visibility=Visibility.Visible;
         if(destructive) AcceptButton.Foreground=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255,156,156));
         if(!showCancel)
         {

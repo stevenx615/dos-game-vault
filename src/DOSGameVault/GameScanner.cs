@@ -1,11 +1,15 @@
 using System.IO;
 using System.Text.Json;
 namespace DOSGameVault;
-public sealed record GameScanResult(List<GameEntry> Games, List<EmulatorInstallation> Versions, int Matched, int Unsorted, int SkippedFolders);
+public sealed record GameScanResult(List<GameEntry> Games, List<EmulatorInstallation> Versions, int Matched, int Unknown, int SkippedFolders);
 public static class GameScanner
 {
     public static LibraryData LoadCatalog()
     {
+#if DEBUG
+        var development=Path.Combine(AppContext.BaseDirectory,"game-list.development.json");
+        if(File.Exists(development))return JsonSerializer.Deserialize<LibraryData>(File.ReadAllText(development)) ?? throw new InvalidDataException("The development game list is invalid.");
+#endif
         using var stream=typeof(GameScanner).Assembly.GetManifestResourceStream("DOSGameVault.GameCatalog.json") ?? throw new FileNotFoundException("The bundled game list is missing.");
         return JsonSerializer.Deserialize<LibraryData>(stream) ?? throw new InvalidDataException("The game list is invalid.");
     }
@@ -26,11 +30,11 @@ public static class GameScanner
         {
             var relative=Relative(value,sourceRoot);return relative==null?value:Path.GetFullPath(Path.Combine(root,relative));
         }
-        void Add(GameEntry entry)
+        void Add(GameEntry entry,bool recognized=false)
         {
             if(!paths.Add(entry.ExecutablePath))return;
             if(entry.Id==Guid.Empty||!ids.Add(entry.Id)){do entry.Id=Guid.NewGuid();while(!ids.Add(entry.Id));}
-            entries.Add(entry);if(entry.IsUnsorted)unsorted++;else matched++;
+            entries.Add(entry);if(recognized)matched++;else unsorted++;
         }
         foreach(var source in catalog.Games)
         {
@@ -44,12 +48,13 @@ public static class GameScanner
             game.IsFavorite=false;
             game.ExecutablePath=executable;game.CollectionRoot=root;
             game.CoverOverride=Relative(game.CoverOverride,oldRoot) is {} coverRelative ? Path.GetFullPath(Path.Combine(root,coverRelative)) : "";
+            for(var i=0;i<game.Screenshots.Count;i++)game.Screenshots[i]=Rebase(game.Screenshots[i],oldRoot);
             game.ManualPath=Rebase(game.ManualPath,oldRoot);
             if(game.LaunchProfile!=null)game.LaunchProfile.EmulatorPath=Rebase(game.LaunchProfile.EmulatorPath,oldRoot);
-            game.IsUnsorted=false;Add(game);
+            Add(game,recognized:true);
         }
         // Existing game folders also own their tools and subfolders; rescans never duplicate those as unknown games.
-        foreach(var game in existing.Where(g=>!g.IsUnsorted))
+        foreach(var game in existing)
             if(Relative(game.ExecutablePath,root)!=null)knownFolders.Add(Path.GetDirectoryName(Path.GetFullPath(game.ExecutablePath))!);
         var emulatorFolders=(registered ?? []).Select(v=>Path.GetDirectoryName(v.ExecutablePath)).Where(p=>!string.IsNullOrWhiteSpace(p)).Select(p=>Path.GetFullPath(p!)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         bool Under(string path,string parent)=>path.Equals(parent,StringComparison.OrdinalIgnoreCase)||path.StartsWith(Path.TrimEndingDirectorySeparator(parent)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
@@ -71,7 +76,7 @@ public static class GameScanner
             var chosen=programs.OrderBy(f=>Path.GetFileNameWithoutExtension(f).Equals(name,StringComparison.OrdinalIgnoreCase)?0:1)
                 .ThenBy(f=>new[]{"setup","install","uninst","uninstall","config","setsound"}.Contains(Path.GetFileNameWithoutExtension(f).ToLowerInvariant())?1:0)
                 .ThenBy(f=>Path.GetExtension(f).Equals(".bat",StringComparison.OrdinalIgnoreCase)?0:1).ThenBy(f=>f,StringComparer.OrdinalIgnoreCase).First();
-            Add(new(){Title=name,OriginalTitle=name,ExecutablePath=chosen,CollectionRoot=root,IsUnsorted=true,
+            Add(new(){Title=name,OriginalTitle=name,ExecutablePath=chosen,CollectionRoot=root,
                 ImportWarning="Not found in the game list. Verify the startup file in Game Settings. Candidates: "+string.Join(", ",programs.Select(Path.GetFileName))});
         }
         var versions=new List<EmulatorInstallation>();

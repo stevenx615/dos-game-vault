@@ -9,7 +9,20 @@ public sealed partial class MainViewModel
     public bool CanOpenLibraryFolder => store is IRelocatableLibraryStore disk && Directory.Exists(Path.GetDirectoryName(disk.LibraryPath));
     public ICommand OpenCollectionFolderCommand { get; private set; } = null!;
     public ICommand OpenLibraryFolderCommand { get; private set; } = null!;
-    public string GameCoverFolder => !string.IsNullOrWhiteSpace(settings.GameCoverFolder) ? settings.GameCoverFolder : string.IsNullOrWhiteSpace(GameCollectionPath) ? "" : Path.Combine(GameCollectionPath, "_game_covers");
+    public string GameCoverFolder
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(settings.GameCoverFolder))
+            {
+                var configured = Path.TrimEndingDirectorySeparator(settings.GameCoverFolder);
+                return Path.GetFileName(configured).Equals("_game_covers", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(configured).Equals("_game_cover", StringComparison.OrdinalIgnoreCase)
+                    ? Path.Combine(Path.GetDirectoryName(configured)!, "_game_previews") : configured;
+            }
+            var root = !string.IsNullOrWhiteSpace(GameCollectionPath) ? GameCollectionPath : null;
+            return root == null ? "" : Path.Combine(root, "_game_previews");
+        }
+    }
     public ICommand BrowseGameCoverFolderCommand { get; private set; } = null!;
     public string GameCollectionPath => settings.GameCollectionRoot;
     public bool CanFindDosBox => !string.IsNullOrWhiteSpace(GameCollectionPath) && Directory.Exists(GameCollectionPath);
@@ -79,13 +92,24 @@ public sealed partial class MainViewModel
         {
             var folder=dialogs.PickCoverDirectory(); if(folder is null) return;
             folder=Path.GetFullPath(folder); Directory.CreateDirectory(folder);
-            var previous=settings.GameCoverFolder; settings.GameCoverFolder=folder;
+            var previous=settings.GameCoverFolder;
+            var snapshots=Games.ToDictionary(game=>game,game=>(Cover:game.CoverOverride,English:game.EnglishName,Images:game.Screenshots.ToArray()));
+            settings.GameCoverFolder=folder;
+            RestorePreviewLinks(Games);
             var links=await FindCoverLinksAsync(Games);
-            var oldCovers=links.Keys.ToDictionary(game=>game,game=>game.CoverOverride);
             foreach(var link in links)link.Key.CoverOverride=link.Value;
-            try { await PersistAsync(); } catch { settings.GameCoverFolder=previous;foreach(var old in oldCovers)old.Key.CoverOverride=old.Value;throw; }
+            try { await PersistAsync(); } catch
+            {
+                settings.GameCoverFolder=previous;
+                foreach(var old in snapshots)
+                {
+                    old.Key.CoverOverride=old.Value.Cover;old.Key.EnglishName=old.Value.English;
+                    old.Key.Screenshots.Clear();foreach(var image in old.Value.Images)old.Key.Screenshots.Add(image);
+                }
+                throw;
+            }
             await RememberCoverLinksAsync();
-            Notify(nameof(GameCoverFolder)); AutoSaveMessage="Game cover folder saved.";
+            Notify(nameof(GameCoverFolder)); AutoSaveMessage="Game preview folder saved.";
         }));
         OpenCollectionFolderCommand = new AsyncCommand(() => RunAsync(() =>
         {
@@ -115,7 +139,7 @@ public sealed partial class MainViewModel
             if (folder is null) return;
             folder = Path.GetFullPath(folder);
             if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("Choose an existing game collection folder.");
-            Directory.CreateDirectory(Path.Combine(folder, "_game_covers"));
+            Directory.CreateDirectory(Path.Combine(folder, "_game_previews"));
             if (folder.Equals(settings.GameCollectionRoot, StringComparison.OrdinalIgnoreCase)) { Notify(nameof(GameCoverFolder)); return; }
             await PersistAsync();
             var updated = CollectionPaths.Rebase(new() { Games = Games.ToList(), Settings = settings }, folder);

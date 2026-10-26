@@ -15,18 +15,26 @@ public interface IRelocatableLibraryStore : ILibraryStore
     string LibraryPath { get; }
     Task RelocateAsync(string directory, LibraryData data);
 }
+public interface ISettingsStore
+{
+    Task SaveSettingsAsync(AppSettings settings);
+}
 public interface IBackupLibraryStore : ILibraryStore
 {
     Task<string> BackupBeforeClearAsync(LibraryData data);
 }
-public sealed class JsonStore : IRelocatableLibraryStore, IBackupLibraryStore
+public sealed class JsonStore : IRelocatableLibraryStore, IBackupLibraryStore, ISettingsStore
 {
     private string root;
     private readonly string? locationRoot;
     private readonly string? legacyRoot;
     private readonly string settingsRoot;
     private bool locationLoaded;
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All)
+    };
     public JsonStore(string? directory = null, bool rememberLocation = false)
     {
         root = Path.GetFullPath(directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DOSGameVault"));
@@ -96,6 +104,12 @@ public sealed class JsonStore : IRelocatableLibraryStore, IBackupLibraryStore
             await WriteAtomicAsync(LibraryPath,new GameLibraryFile(data.Games));
         }
         return data;
+    }
+    public async Task SaveSettingsAsync(AppSettings settings)
+    {
+        await ResolveLocationAsync();
+        Directory.CreateDirectory(settingsRoot);
+        await WriteAtomicAsync(SettingsPath,settings);
     }
     public async Task SaveAsync(LibraryData data)
     {
@@ -229,7 +243,9 @@ public sealed class DosBoxStagingAdapter : IEmulatorAdapter
     }
     public void Launch(GameEntry game, AppSettings settings)
     {
-        using var process = Process.Start(BuildStartInfo(game, settings)) ?? throw new InvalidOperationException("DOSBox could not be started.");
+        var info=BuildStartInfo(game,settings);
+        DosBoxLaunchConfig.Prepare(game,settings.Fullscreen);
+        using var process = Process.Start(info) ?? throw new InvalidOperationException("DOSBox could not be started.");
     }
 }
 public interface IDesktopDialogs
@@ -239,6 +255,7 @@ public interface IDesktopDialogs
     string? PickJsonLibrary() => null;
     string? PickCollectionRoot() => null;
     string? PickCover() => null;
+    string[] PickScreenshots() => [];
     string? PickCoverDirectory() => null;
     string? PickManual() => null;
     string? PickLibraryDirectory() => null;
@@ -247,10 +264,13 @@ public interface IDesktopDialogs
     bool ConfirmResetSettings() => false;
     bool ConfirmResetAppearance() => false;
     bool ConfirmRemoveCover() => false;
+    ImageRemovalChoice ChooseImageRemoval(bool isCover) => ImageRemovalChoice.Cancel;
+    bool ConfirmDeleteGenre(string name,int games) => false;
     void ShowScanResults(GameScanResult result, int totalGames) { }
     bool ConfirmRemoveDefaultDosBox(string name) => false;
     EmulatorInstallation? PickDefaultDosBox(IReadOnlyList<EmulatorInstallation> versions) => null;
     string? PickConfig() => null;
+    string? PickDiscImage() => null;
     void OpenFolder(string path)
     {
         if (!Directory.Exists(path)) throw new DirectoryNotFoundException("The game folder is missing. Check the game collection location in Settings.");
@@ -267,6 +287,11 @@ public interface IDesktopDialogs
 }
 public sealed class DesktopDialogs : IDesktopDialogs
 {
+    public bool ConfirmDeleteGenre(string name,int games)
+    {
+        var dialog=new DosBoxPromptDialog("Delete genre?",$"Remove {name}? {games} game(s) will be moved to Uncategorized.","Delete genre",destructive:true);
+        SetPromptOwner(dialog);return ModalWindows.Show(dialog)==true;
+    }
     private static string LocalizeFilter(string filter)
     {
         var parts=filter.Split('|');
@@ -280,7 +305,7 @@ public sealed class DesktopDialogs : IDesktopDialogs
     }
     public void ShowScanResults(GameScanResult result, int totalGames)
     {
-        var message=$"Added: {result.Matched} games · {result.Unsorted} unsorted\nSkipped folders: {result.SkippedFolders}\nLibrary total: {totalGames}";
+        var message=$"Added: {result.Matched} recognized games · {result.Unknown} unknown games\nSkipped folders: {result.SkippedFolders}\nLibrary total: {totalGames}";
         var dialog=new DosBoxPromptDialog("Scan complete",message,"OK",showCancel:false);
         SetPromptOwner(dialog); ModalWindows.Show(dialog);
     }
@@ -288,6 +313,13 @@ public sealed class DesktopDialogs : IDesktopDialogs
     {
         var dialog=new DosBoxPromptDialog("Remove cover?", "Remove this custom cover? Its copied image in the cover folder will be deleted unless another game uses it. Original images outside the cover folder will be kept.", "Remove cover", destructive:true);
         SetPromptOwner(dialog);return ModalWindows.Show(dialog)==true;
+    }
+    public ImageRemovalChoice ChooseImageRemoval(bool isCover)
+    {
+        var message=isCover ? "Remove this cover? The next image will become the cover. Choose whether to keep or permanently delete the image file." : "Remove this screenshot? Choose whether to keep or permanently delete the image file.";
+        var dialog=new DosBoxPromptDialog("Remove image?",message,"Remove image",destructive:true,showDeleteFile:true);
+        SetPromptOwner(dialog);
+        return ModalWindows.Show(dialog)==true ? (dialog.DeleteFileSelected ? ImageRemovalChoice.DeleteFile : ImageRemovalChoice.Remove) : ImageRemovalChoice.Cancel;
     }
     public bool ConfirmResetAppearance()
     {
@@ -325,11 +357,17 @@ public sealed class DesktopDialogs : IDesktopDialogs
     }
     public string? PickJsonLibrary() => PickFile("Import JSON game library", "JSON game library or backup|*.json;*.bak");
     public string? PickConfig() => PickFile("Select DOSBox configuration", "DOSBox configuration|*.conf;*.cfg");
+    public string? PickDiscImage() => PickFile("Select a CD image inside the game folder", "CD image|*.iso;*.cue");
     public string? PickLibraryDirectory() { var dialog = new OpenFolderDialog { Title=Localization.Current.Translate("Choose a new library save folder") }; return ModalWindows.Show(dialog) == true ? dialog.FolderName : null; }
     public string? PickCoverDirectory()
     {
         var dialog=new OpenFolderDialog { Title=Localization.Current.Translate("Select game cover folder") };
         return ModalWindows.Show(dialog)==true ? dialog.FolderName : null;
+    }
+    public string[] PickScreenshots()
+    {
+        var dialog = new OpenFileDialog { Title = Localization.Current.Translate("Add images"), Filter = "Images|*.jpg;*.jpeg;*.png;*.bmp", Multiselect = true };
+        return ModalWindows.Show(dialog) == true ? dialog.FileNames : [];
     }
     public string? PickCover() => PickFile("Select game cover", "Cover image|*.jpg;*.jpeg;*.png;*.bmp");
     public string? PickManual() => PickFile("Select game manual", "Manual|*.pdf;*.txt;*.htm;*.html;*.png;*.jpg");
@@ -361,3 +399,5 @@ public sealed class DesktopDialogs : IDesktopDialogs
 }
 
 
+
+public enum ImageRemovalChoice { Cancel, Remove, DeleteFile }

@@ -11,15 +11,14 @@ public sealed partial class MainViewModel
         if(!CanRemoveCover || !dialogs.ConfirmRemoveCover()) return;
         if(!await FlushGameEditsAsync() || SelectedGame is not {} game) return;
         var previous=game.CoverOverride;
+        var previousHidden=game.HideAutomaticCover;
         if(string.IsNullOrWhiteSpace(previous)) return;
         var fullPath=Path.GetFullPath(previous);
         var directory=Path.GetDirectoryName(fullPath)!;
         var managed=(!string.IsNullOrWhiteSpace(GameCoverFolder) && directory.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(GameCoverFolder)),StringComparison.OrdinalIgnoreCase))
-            || Path.GetFileName(directory).Equals("_game_covers",StringComparison.OrdinalIgnoreCase)
-            || Path.GetFileName(directory).Equals("_game_cover",StringComparison.OrdinalIgnoreCase)
             || Regex.IsMatch(Path.GetFileName(fullPath),"^"+game.Id.ToString("N")+@"-[A-Fa-f0-9]{64}\.[A-Za-z0-9]+$");
         var shared=Games.Any(g=>g!=game && !string.IsNullOrWhiteSpace(g.CoverOverride) && Path.GetFullPath(g.CoverOverride).Equals(fullPath,StringComparison.OrdinalIgnoreCase));
-        game.CoverOverride="";
+        game.CoverOverride="";game.HideAutomaticCover=true;
         try
         {
             await PersistAsync();
@@ -28,6 +27,7 @@ public sealed partial class MainViewModel
         catch
         {
             game.CoverOverride=previous;
+            game.HideAutomaticCover=previousHidden;
             await PersistAsync();
             throw;
         }

@@ -15,7 +15,22 @@ public partial class MainWindow
     private void ListEntranceChanged(object? sender,PropertyChangedEventArgs args)
     {
         if(sender is not MainViewModel vm)return;
-        if(args.PropertyName==nameof(MainViewModel.IsListView))
+        if(args.PropertyName==nameof(MainViewModel.ShowDetails) && !vm.ShowDetails && vm.SelectedGame is {} editedGame && vm.ConsumeRenamedGameScrollRequest())
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle,new Action(()=>
+            {
+                if(vm.ShowDetails || !GameList.IsVisible || !ReferenceEquals(vm.SelectedGame,editedGame) || !GameList.Items.Contains(editedGame))return;
+                GameList.UpdateLayout();
+                GameList.ScrollIntoView(editedGame);
+                GameList.UpdateLayout();
+                if(FindScroll(GameList) is {} scroll && GameList.ItemContainerGenerator.ContainerFromItem(editedGame) is ListBoxItem row)
+                {
+                    var top=row.TranslatePoint(new Point(0,0),scroll).Y;
+                    scroll.ScrollToVerticalOffset(scroll.VerticalOffset+top);
+                }
+            }));
+        }
+        else if(args.PropertyName==nameof(MainViewModel.IsListView))
         {
             QueueListEntrance();
         }

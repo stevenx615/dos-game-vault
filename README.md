@@ -29,16 +29,16 @@ Keeping games together in a collection folder makes scanning and moving the coll
 Example:
 ```text
 DOSGames/
-  DOOM/
-    DOOM.EXE
-  PRINCE/
-    PRINCE.EXE
-  DOSBOX/
-    dosbox.exe
-  _game_covers/
-    DOOM.jpg
-    PRINCE.png
-    _cover_index.json
+    DOOM/
+        DOOM.EXE
+    PRINCE/
+        PRINCE.EXE
+    DOSBOX/
+        dosbox.exe
+    _game_previews/
+        DOOM.jpg
+        PRINCE.png
+        _preview_index.json
 ```
 
 ## Troubleshooting

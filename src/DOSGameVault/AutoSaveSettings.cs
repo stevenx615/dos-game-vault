@@ -17,17 +17,29 @@ public sealed partial class MainViewModel
     public string SelectedLanguage
     {
         get => settings.Language;
-        set { if(value is not ("EN" or "CN") || settings.Language==value) return; settings.Language=value; Localization.Current.SetLanguage(value); RefreshLocalizedGameNames(); Notify(nameof(SelectedLanguage)); ScheduleSettingsSave(); }
+        set { if(value is not ("EN" or "CN") || settings.Language==value) return; settings.Language=value; Localization.Current.SetLanguage(value); RefreshLocalizedGameNames(); Notify(nameof(EditDescription)); Notify(nameof(SelectedLanguage)); ScheduleSettingsSave(); }
     }
     private void RefreshLocalizedGameNames()
     {
+        var selectedGenreKey=genreNames.FirstOrDefault(pair=>pair.Value==GenreSelection?.Label).Key;
+        var activeGenreKey=ActiveFilter?.Key.StartsWith("genre:",StringComparison.Ordinal)==true
+            ? genreNames.FirstOrDefault(pair=>pair.Value==ActiveFilter.Label).Key : null;
         foreach(var game in Games) game.RefreshDisplayTitle();
+        UpdateLibrary();
+        if(selectedGenreKey!=null && genreNames.TryGetValue(selectedGenreKey,out var label))
+        {
+            genreSelection=GenreChoices.FirstOrDefault(genre=>genre.Label==label);Notify(nameof(GenreSelection));
+        }
+        if(activeGenreKey!=null && genreNames.TryGetValue(activeGenreKey,out var activeLabel))
+        {
+            activeFilter=GenreFilters.FirstOrDefault(genre=>genre.Label==activeLabel);Notify(nameof(ActiveFilter));Notify(nameof(ViewTitle));
+        }
         ApplySortWithoutPaging(); RefreshView();
     }
     public int SettingsTabIndex { get=>settingsTabIndex; set=>Set(ref settingsTabIndex,value); }
     public string AutoSaveMessage { get=>autoSaveMessage; private set=>Set(ref autoSaveMessage,value); }
     public bool ShowGameInfoPanel { get=>showGameInfoPanel; set { Set(ref showGameInfoPanel,value); Notify(nameof(SidePanelWidth)); ScheduleSettingsSave(); } }
-    public double SidePanelWidth => ShowGameInfoPanel ? 320 : 0;
+    public double SidePanelWidth => ShowGameInfoPanel ? 328 : 0;
     public string[] CardSizeOptions { get; } = ["Small","Medium","Large"];
     private string gameCardSize="Medium";
     public string GameCardSize {get=>gameCardSize;set {if(!CardSizeOptions.Contains(value)||value==gameCardSize)return;Set(ref gameCardSize,value);ScheduleSettingsSave();}}

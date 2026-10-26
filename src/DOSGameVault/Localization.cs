@@ -75,3 +75,12 @@ public sealed class TranslationConverter : IMultiValueConverter
     public object Convert(object[] values,Type targetType,object parameter,CultureInfo culture) => values[0] is string text ? Localization.Current.Translate(text) : values[0];
     public object[] ConvertBack(object value,Type[] targetTypes,object parameter,CultureInfo culture) => throw new NotSupportedException();
 }
+public sealed class SecondaryGameNameConverter : IMultiValueConverter
+{
+    public object Convert(object[] values,Type targetType,object parameter,CultureInfo culture)
+    {
+        var index=Localization.Current.Language=="CN" ? 0 : 1;
+        return values.Length>index && values[index] is string name ? name : "";
+    }
+    public object[] ConvertBack(object value,Type[] targetTypes,object parameter,CultureInfo culture) => throw new NotSupportedException();
+}
