@@ -15,15 +15,36 @@ public partial class ScreenshotGallery : UserControl
     private GameEntry? game;
     private readonly List<string> images = [];
     private int index;
+    private readonly System.Windows.Threading.DispatcherTimer thumbnailSlideTimer=new() {Interval=TimeSpan.FromMilliseconds(16)};
+    private double thumbnailScrollTarget;
+    private void ThumbnailPointerMoved(object sender,MouseEventArgs e)
+    {
+        if(IsEditor || DetailThumbnails.ScrollableWidth<=0)return;
+        var width=DetailThumbnails.ActualWidth;
+        var inset=Math.Min(32,width/4);
+        var position=e.GetPosition(DetailThumbnails).X;
+        thumbnailScrollTarget=Math.Clamp((position-inset)/Math.Max(1,width-2*inset),0,1)*DetailThumbnails.ScrollableWidth;
+        thumbnailSlideTimer.Start();
+    }
+    private void ThumbnailPointerLeft(object sender,MouseEventArgs e)=>thumbnailSlideTimer.Stop();
+    private void SlideThumbnails(object? sender,EventArgs e)
+    {
+        if(!DetailThumbnails.IsMouseOver || !IsVisible || IsEditor) {thumbnailSlideTimer.Stop();return;}
+        var difference=thumbnailScrollTarget-DetailThumbnails.HorizontalOffset;
+        DetailThumbnails.ScrollToHorizontalOffset(Math.Abs(difference)<0.5 ? thumbnailScrollTarget : DetailThumbnails.HorizontalOffset+difference*0.4);
+        if(Math.Abs(difference)<0.5)thumbnailSlideTimer.Stop();
+    }
     public ScreenshotGallery()
     {
         InitializeComponent();
+        thumbnailSlideTimer.Tick+=SlideThumbnails;
         Loaded += (_, _) => Attach();
         Unloaded += (_, _) => Detach();
         DataContextChanged += (_, _) => { if (IsLoaded) Attach(); };
     }
     private void Detach()
     {
+        thumbnailSlideTimer.Stop();
         if (model != null) model.PropertyChanged -= ModelChanged;
         if (game != null) { game.PropertyChanged -= GameChanged; game.Screenshots.CollectionChanged -= ScreenshotsChanged; }
         model = null; game = null;

@@ -92,7 +92,9 @@ public static class PreviewStorage
             : new(JsonSerializer.Deserialize<Dictionary<string, Entry>>(previous) ?? [], StringComparer.OrdinalIgnoreCase);
         foreach (var game in games)
         {
-            var cover = game.CoverPath;
+            // An index records saved associations; resolving automatic covers here
+            // would probe every game folder whenever the library is saved.
+            var cover = string.IsNullOrWhiteSpace(game.CoverOverride) ? null : game.CoverOverride;
             var paths = (cover == null ? game.Screenshots.AsEnumerable() : game.Screenshots.Prepend(cover))
                 .Where(path => LocalFile(folder, path)).Distinct(StringComparer.OrdinalIgnoreCase).Select(Path.GetFileName).Cast<string>().ToArray();
             var key = CoverMatching.GameKey(game);
@@ -104,7 +106,9 @@ public static class PreviewStorage
         }
         if (entries.Count == 0 && !Directory.Exists(folder)) return () => { };
         Directory.CreateDirectory(folder);
-        AtomicWrite(file, JsonSerializer.SerializeToUtf8Bytes(entries, new JsonSerializerOptions { WriteIndented = true }));
+        var bytes=JsonSerializer.SerializeToUtf8Bytes(entries, new JsonSerializerOptions { WriteIndented = true });
+        if(previous!=null && bytes.AsSpan().SequenceEqual(previous))return () => { };
+        AtomicWrite(file, bytes);
         return () => { if (previous == null) File.Delete(file); else AtomicWrite(file, previous); };
     }
     private static void AtomicWrite(string path, byte[] bytes)
@@ -160,6 +164,9 @@ public static class PreviewStorage
         string? Resolve(string? name) => name != null && Path.GetFileName(name) == name && !name.Contains('/') && !name.Contains('\\') && File.Exists(Path.Combine(folder, name)) ? Path.Combine(folder, name) : null;
         var changed = false;
         var gameList = games.ToList();
+        // Build these once instead of searching the entire index/library for each unmatched game.
+        var entriesByFolder=entries.ToLookup(pair=>pair.Key.Replace('\\','/').Split('/').Last(),StringComparer.OrdinalIgnoreCase);
+        var gamesByFolder=gameList.ToLookup(game=>game.FolderName,StringComparer.OrdinalIgnoreCase);
         static IEnumerable<string> Names(GameEntry game) => new[] { game.EnglishName, game.FolderName, game.Title, game.ChineseName }
             .Where(name=>!string.IsNullOrWhiteSpace(name)).Select(CoverStorage.FileStem).Distinct(StringComparer.OrdinalIgnoreCase);
         var owners = gameList.SelectMany(game=>Names(game).Select(name=>(Game:game,Name:name)))
@@ -173,8 +180,8 @@ public static class PreviewStorage
         {
             if (!entries.TryGetValue(CoverMatching.GameKey(game), out var entry))
             {
-                var candidates = entries.Where(pair => pair.Key.Replace('\\','/').Split('/').Last().Equals(game.FolderName, StringComparison.OrdinalIgnoreCase)).ToList();
-                if (candidates.Count == 1 && gameList.Count(g=>g.FolderName.Equals(game.FolderName,StringComparison.OrdinalIgnoreCase)) == 1)
+                var candidates = entriesByFolder[game.FolderName].ToList();
+                if (candidates.Count == 1 && gamesByFolder[game.FolderName].Count() == 1)
                     entry = candidates[0].Value;
                 else if (candidates.Count == 0 && !game.HideAutomaticCover)
                 {

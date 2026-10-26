@@ -21,7 +21,7 @@ public partial class MainWindow
     {
         if(DataContext is not MainViewModel vm)return;
         Button selected=vm.ShowSettings?SettingsMenuButton:vm.ShowAbout?AboutMenuButton:
-            vm.IsFavoritesPage?FavoritesMenuButton:vm.IsUnsortedPage?UnsortedMenuButton:LibraryMenuButton;
+            vm.IsFavoritesPage?FavoritesMenuButton:LibraryMenuButton;
         var target=selected.TranslatePoint(new Point(),SidebarMenuHost).Y;
         var from=(SidebarSelectionThumb.RenderTransform as TranslateTransform)?.Y??target;
         var visible=SidebarSelectionThumb.Visibility==Visibility.Visible;

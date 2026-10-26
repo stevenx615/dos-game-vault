@@ -18,6 +18,7 @@ public sealed partial class MainViewModel
         if (!await FlushGameEditsAsync() || SelectedGame is not { } game) return;
         sources ??= dialogs.PickScreenshots();
         if (sources.Length == 0) return;
+        sources = sources.OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase).ToArray();
         var folder = GameCoverFolder;
         if (string.IsNullOrWhiteSpace(folder)) throw new InvalidOperationException("Choose a game collection folder in Settings before adding images.");
         var hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -73,21 +74,28 @@ public sealed partial class MainViewModel
         game.CoverOverride = path;
     });
 
-    public Task RemoveGameImageAsync(string path) => ChangeGameImagesAsync((game) =>
+    public async Task RemoveGameImageAsync(string path)
     {
-        var isCover = string.Equals(game.CoverPath, path, StringComparison.OrdinalIgnoreCase);
-        while (game.Screenshots.Remove(path)) { }
-        if (!isCover) return;
-        game.HideAutomaticCover = true;
-        game.CoverOverride = game.Screenshots.FirstOrDefault() ?? "";
-        if (game.Screenshots.Count > 0) game.Screenshots.RemoveAt(0);
-    }, game => (string.Equals(game.CoverPath,path,StringComparison.OrdinalIgnoreCase) || game.Screenshots.Contains(path))
-        && dialogs.ConfirmRemoveGameImage(string.Equals(game.CoverPath,path,StringComparison.OrdinalIgnoreCase)));
+        if(!await FlushGameEditsAsync() || SelectedGame is not {} selectedGame)return;
+        if(!string.Equals(selectedGame.CoverPath,path,StringComparison.OrdinalIgnoreCase) && !selectedGame.Screenshots.Contains(path,StringComparer.OrdinalIgnoreCase))return;
+        var choice=dialogs.ChooseImageRemoval(string.Equals(selectedGame.CoverPath,path,StringComparison.OrdinalIgnoreCase));
+        if(choice==ImageRemovalChoice.Cancel)return;
+        await ChangeGameImagesAsync(game=>
+        {
+            var isCover=string.Equals(game.CoverPath,path,StringComparison.OrdinalIgnoreCase);
+            for(var i=game.Screenshots.Count-1;i>=0;i--)if(string.Equals(game.Screenshots[i],path,StringComparison.OrdinalIgnoreCase))game.Screenshots.RemoveAt(i);
+            if(!isCover)return;
+            game.HideAutomaticCover=true;
+            game.CoverOverride=game.Screenshots.FirstOrDefault() ?? "";
+            if(game.Screenshots.Count>0)game.Screenshots.RemoveAt(0);
+        },deleteFile:choice==ImageRemovalChoice.DeleteFile ? path : null);
+    }
 
-    private Task ChangeGameImagesAsync(Action<GameEntry> change, Func<GameEntry,bool>? confirm = null) => RunAsync(async () =>
+    private Task ChangeGameImagesAsync(Action<GameEntry> change,string? deleteFile=null) => RunAsync(async () =>
     {
         if (!await FlushGameEditsAsync() || SelectedGame is not { } game) return;
-        if (confirm != null && !confirm(game)) return;
+        if(deleteFile!=null && Games.Any(other=>!ReferenceEquals(other,game) && (string.Equals(other.CoverPath,deleteFile,StringComparison.OrdinalIgnoreCase) || other.Screenshots.Contains(deleteFile,StringComparer.OrdinalIgnoreCase))))
+            throw new InvalidOperationException(Localization.Current["ImageFileShared"]);
         var previousCover = game.CoverOverride;
         var previousHidden = game.HideAutomaticCover;
         var previousImages = game.Screenshots.ToArray();
@@ -107,5 +115,8 @@ public sealed partial class MainViewModel
             foreach (var image in previousImages) game.Screenshots.Add(image);
             throw;
         }
+        if(deleteFile==null)return;
+        try { File.Delete(deleteFile); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Status = string.Format(Localization.Current["ImageFileDeleteFailed"], ex.Message); }
     });
 }

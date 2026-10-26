@@ -6,7 +6,7 @@ namespace DOSGameVault;
 public partial class MainWindow : Window
 {
     private bool closingSaved, savingClose;
-    private void DetailBackgroundUpdated(object sender,System.Windows.Data.DataTransferEventArgs e)
+    private void DetailBackgroundUpdated(object? sender,EventArgs e)
     {
         // Refresh the small backdrop texture after the asynchronous image binding settles,
         // including a null source. Keep caching during normal resizing and scrolling.
@@ -113,7 +113,7 @@ public partial class MainWindow : Window
             UpdateCaptionButtons();
             if(IsLoaded && WindowState!=WindowState.Minimized)
             {
-                UiMotion.RevealWindow(WindowFrame);
+                UiMotion.ResetWindowMotion(WindowFrame);
             }
         };
         Loaded += (_, _) => {UpdateCaptionButtons();UpdateSidebarSelection(false);QueueListEntrance();};
@@ -165,21 +165,15 @@ public partial class MainWindow : Window
         WindowState=WindowState.Normal;
         RestorePreferences();
     }
-    private bool minimizing;
-    private async void MinimizeWindow(object sender, RoutedEventArgs e)
+    private void MinimizeWindow(object sender, RoutedEventArgs e)
     {
-        if(minimizing || savingClose)return;
-        minimizing=true;StopSmoothScroll();
-        try
-        {
-            await UiMotion.ShrinkWindowOut(WindowFrame);
-            if(IsVisible && !savingClose)WindowState=WindowState.Minimized;
-        }
-        finally {UiMotion.ResetWindowMotion(WindowFrame);minimizing=false;}
+        if(savingClose)return;
+        StopSmoothScroll();UiMotion.ResetWindowMotion(WindowFrame);
+        SystemCommands.MinimizeWindow(this);
     }
     private void ToggleMaximizeWindow(object sender, RoutedEventArgs e)
     {
-        if(minimizing || savingClose)return;
+        if(savingClose)return;
         WindowState=WindowState==WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     }
     private void CloseWindow(object sender, RoutedEventArgs e) => Close();
@@ -199,7 +193,7 @@ public partial class MainWindow : Window
         if (DataContext is not MainViewModel vm) return;
         var pref = vm.WindowPreferences;
         var area = SystemParameters.WorkArea;
-        Width = double.IsFinite(pref.Width) ? Math.Clamp(pref.Width, MinWidth, Math.Max(MinWidth, area.Width)) : 1440;
+        Width = double.IsFinite(pref.Width) ? Math.Clamp(pref.Width, MinWidth, Math.Max(MinWidth, area.Width)) : 1448;
         Height = double.IsFinite(pref.Height) ? Math.Clamp(pref.Height, MinHeight, Math.Max(MinHeight, area.Height)) : 900;
         if (pref.Maximized) WindowState = WindowState.Maximized;
         UpdateCaptionButtons();

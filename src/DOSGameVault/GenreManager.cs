@@ -9,13 +9,19 @@ public sealed record GenreDefinition(string Key,string Name,string ChineseName="
 public static class GenreCatalog
 {
     public static string Key(string? category)=>category?.ToUpperInvariant() is "RTS" or "SPG" ? "SLG" : category ?? "";
+    public static string DefaultName(string? category)=>category?.ToUpperInvariant() switch
+    {
+        "ACT"=>"Action", "AVG"=>"Adventure", "RPG"=>"Role-playing", "SLG" or "RTS" or "SPG"=>"Strategy",
+        "SIM"=>"Simulation", "PUZ"=>"Puzzle", "HGA"=>"Other", "SPT"=>"Sports", "RAC"=>"Racing", "SHT"=>"Shooter",
+        _=>string.IsNullOrEmpty(category) ? "Uncategorized" : category
+    };
     public static string DefaultChineseName(string name)=>name switch
     {
         "Uncategorized"=>"未分类", "Action"=>"动作", "Adventure"=>"冒险", "Role-playing"=>"角色扮演",
         "Strategy"=>"策略", "Simulation"=>"模拟", "Puzzle"=>"益智", "Other"=>"其他",
-        "Racing"=>"竞速", "Sports"=>"体育", "Education"=>"教育", _=>""
+        "Racing"=>"竞速", "Sports"=>"体育", "Shooter"=>"射击", "Education"=>"教育", _=>""
     };
-    public static List<GenreDefinition> Defaults()=>new List<GenreDefinition> {new("","Uncategorized"),new("ACT","Action"),new("AVG","Adventure"),new("RPG","Role-playing"),new("SLG","Strategy"),new("SIM","Simulation"),new("PUZ","Puzzle"),new("HGA","Other")}.Select(genre=>genre with {ChineseName=DefaultChineseName(genre.Name)}).ToList();
+    public static List<GenreDefinition> Defaults()=>new[] {"","ACT","AVG","RPG","SLG","SIM","PUZ","HGA"}.Select(key=>new GenreDefinition(key,DefaultName(key),DefaultChineseName(DefaultName(key)))).ToList();
 }
 public sealed partial class MainViewModel
 {
@@ -54,8 +60,14 @@ public sealed partial class MainViewModel
         for(var i=0;i<settings.Genres.Count;i++)
         {
             var genre=settings.Genres[i];
+            var defaultName=GenreCatalog.DefaultName(genre.Key);
+            if(genre.Name.Trim().Equals(genre.Key,StringComparison.OrdinalIgnoreCase) && defaultName!=genre.Key)
+                genre=genre with {Name=defaultName};
+            if(string.Equals(genre.ChineseName?.Trim(),genre.Key,StringComparison.OrdinalIgnoreCase) && defaultName!=genre.Key)
+                genre=genre with {ChineseName=""};
             if(string.IsNullOrWhiteSpace(genre.ChineseName) && GenreCatalog.DefaultChineseName(genre.Name) is {Length:>0} chineseName)
-                settings.Genres[i]=genre with {ChineseName=chineseName};
+                genre=genre with {ChineseName=chineseName};
+            settings.Genres[i]=genre;
         }
         var counts=Games.GroupBy(game=>GenreCatalog.Key(game.Category),StringComparer.OrdinalIgnoreCase).ToDictionary(group=>group.Key,group=>group.Count(),StringComparer.OrdinalIgnoreCase);
         var options=settings.Genres.Select(genre=>genre with {Count=counts.GetValueOrDefault(genre.Key)}).OrderBy(genre=>genre.DisplayName).ToList();

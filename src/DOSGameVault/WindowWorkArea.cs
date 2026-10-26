@@ -33,6 +33,10 @@ internal static class WindowWorkArea
             awaitingFirstFrame=false;window.ContentRendered-=rendered;
             DwmFlush();
             var visible=0;DwmSetWindowAttribute(hwnd,13,ref visible,sizeof(int));
+            // Only suppress transitions during the hidden first paint. Windows owns
+            // minimize/restore animations after the window is ready.
+            var allowTransitions=0;
+            DwmSetWindowAttribute(hwnd,3,ref allowTransitions,sizeof(int));
             if(window.ShowActivated)window.Activate();
         };
         window.ContentRendered+=rendered;
@@ -49,6 +53,16 @@ internal static class WindowWorkArea
             }
             return ConstrainMaximizedBounds(window,hwnd,message,wParam,lParam,ref handled);
         });
+        // WindowStyle=None removes WS_CAPTION, which Windows needs for native
+        // window transitions. Keep the native style while our WM_NCCALCSIZE hook
+        // supplies the existing full-client-area title bar and border.
+        var style=GetWindowLong(hwnd,-16); // GWL_STYLE
+        const int caption=0x00c00000;
+        if((style&caption)!=caption)
+        {
+            SetWindowLong(hwnd,-16,style|caption);
+            SetWindowPos(hwnd,IntPtr.Zero,0,0,0,0,0x0037); // FRAMECHANGED, no move/size/z-order/activation.
+        }
     }
     public static async Task ShowReadyAsync(Window window)
     {
@@ -112,6 +126,9 @@ internal static class WindowWorkArea
     [StructLayout(LayoutKind.Sequential)] private struct MinMaxInfo {public PointInt Reserved,MaxSize,MaxPosition,MinTrackSize,MaxTrackSize;}
     [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo {public int Size;public RectInt Monitor,Work;public uint Flags;}
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd,uint flags);
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd,int index);
+    [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hwnd,int index,int value);
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool SetWindowPos(IntPtr hwnd,IntPtr after,int x,int y,int width,int height,uint flags);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] private static extern IntPtr DefWindowProc(IntPtr hwnd,int message,IntPtr wParam,IntPtr lParam);
     [DllImport("gdi32.dll")] private static extern IntPtr GetStockObject(int objectId);
     [DllImport("gdi32.dll")] private static extern uint SetDCBrushColor(IntPtr hdc,uint color);

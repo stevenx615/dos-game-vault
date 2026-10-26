@@ -74,9 +74,9 @@ public sealed partial class MainViewModel : Observable
     private LibraryFilter? genreSelection;
     public LibraryFilter? GenreSelection { get => genreSelection; set { Set(ref genreSelection, value); pageIndex = 0; RefreshView(); ScheduleSettingsSave(); } }
     public ICommand FavoritesPageCommand { get; }
-    public string GamesHeading => ActiveFilter?.Key switch {"favorites"=>"Favorites","unsorted"=>"Unsorted",_=>"Games"};
+    public string GamesHeading => ActiveFilter?.Key switch {"favorites"=>"Favorites",_=>"Games"};
     public bool IsFavoritesPage => !ShowAbout && !ShowSettings && ActiveFilter?.Key == "favorites";
-    public bool IsLibraryPage => !ShowAbout && !ShowSettings && ActiveFilter?.Key != "favorites" && ActiveFilter?.Key != "unsorted";
+    public bool IsLibraryPage => !ShowAbout && !ShowSettings && ActiveFilter?.Key != "favorites";
     public LibraryFilter? ActiveFilter { get => activeFilter; set => SetActiveFilter(value); }
     public string ViewTitle => ActiveFilter?.Label ?? "All Games";
     private readonly ObservableCollection<GameEntry> pageGames=[];
@@ -96,22 +96,26 @@ public sealed partial class MainViewModel : Observable
     public ICommand GridViewCommand { get; }
     public ICommand ListViewCommand { get; }
     private bool showDetails;
-    public bool ShowDetails { get => showDetails; set => Set(ref showDetails, value); }
+    private bool scrollToRenamedGame;
+    public bool ConsumeRenamedGameScrollRequest() {var requested=scrollToRenamedGame;scrollToRenamedGame=false;return requested;}
+    public bool ShowDetails { get => showDetails; set {if(value && !showDetails)scrollToRenamedGame=false;Set(ref showDetails, value);} }
     public string Status { get => status; private set => Set(ref status, value); }
     public string EditTitle { get => title; set { Set(ref title, value); ScheduleGameSave(); } }
-    public string EditDescription { get => description; set { Set(ref description, value); ScheduleGameSave(); } }
+    private string chineseDescriptionDraft="";
+    public string EditDescription { get => Localization.Current.Language=="CN" ? chineseDescriptionDraft : description; set { if(Localization.Current.Language=="CN") Set(ref chineseDescriptionDraft,value); else Set(ref description,value); ScheduleGameSave(); } }
     public string EmulatorPath { get => emulatorPath; set { Set(ref emulatorPath, value); ScheduleSettingsSave(); } }
     public bool Fullscreen { get => fullscreen; set { Set(ref fullscreen, value); ScheduleSettingsSave(); } }
-    public bool ShowSettings { get => showSettings; set { ShowAbout=false; if(showSettings==value)return; if(value)NavigationLeaving?.Invoke(ActiveFilter?.Key??"all"); Set(ref showSettings, value); Notify(nameof(IsFavoritesPage)); Notify(nameof(IsUnsortedPage)); Notify(nameof(IsLibraryPage)); if(!value)NavigationReturned?.Invoke(ActiveFilter?.Key??"all"); } }
+    public bool ShowSettings { get => showSettings; set { ShowAbout=false; if(showSettings==value)return; if(value)NavigationLeaving?.Invoke(ActiveFilter?.Key??"all"); Set(ref showSettings, value); Notify(nameof(IsFavoritesPage)); Notify(nameof(IsLibraryPage)); if(!value)NavigationReturned?.Invoke(ActiveFilter?.Key??"all"); } }
     public string VisibleCountText => $"{VisibleCount} games";
     public bool EmptyLibrary => Library.IsEmpty;
     public bool HasVisibleGames => !EmptyLibrary;
     public bool HasSelection => SelectedGame != null;
     public string CountLabel => $"{Games.Count} games in your collection";
+    private bool refreshingGamePage, selectionWriteSuppressed;
     public GameEntry? SelectedGame
     {
         get => selected;
-        set { if (ReferenceEquals(selected, value)) return; if (gameEditsPending || gameSaveTask is { IsCompleted: false }) { _ = SelectAfterGameSaveAsync(value); return; } loadingGameEdits = true; Set(ref selected, value); EditTitle = value is null ? "" : System.Text.RegularExpressions.Regex.Replace(value.Title, @"^(?:/\d+/\s*)+", ""); EditDescription = value?.Description ?? ""; LoadGameEdits(); Notify(nameof(HasSelection)); }
+        set { if (ReferenceEquals(selected, value)) return; if (refreshingGamePage) { selectionWriteSuppressed = true; return; } if (gameEditsPending || gameSaveTask is { IsCompleted: false }) { _ = SelectAfterGameSaveAsync(value); return; } loadingGameEdits = true; Set(ref selected, value); EditTitle = value is null ? "" : System.Text.RegularExpressions.Regex.Replace(value.Title, @"^(?:/\d+/\s*)+", ""); LoadGameEdits(); Notify(nameof(HasSelection)); }
     }
     public ICommand ImportCommand { get; }
     public ICommand PlayCommand { get; }
@@ -154,22 +158,31 @@ public sealed partial class MainViewModel : Observable
         InitializePlayerCommands();
         InitializeStorageCommands();
     }
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(Func<Task>? showLoadingWindow = null)
     {
+        backgroundFileChecks=SynchronizationContext.Current is System.Windows.Threading.DispatcherSynchronizationContext;
         initializing=true; Notify(nameof(IsLoading));
         try
         {
-            var data = await store.LoadAsync();
-            foreach (var game in data.Games) { if (string.IsNullOrEmpty(game.OriginalTitle)) game.OriginalTitle = game.Title; Games.Add(game); }
+            // File access and JSON parsing must not hold up the WPF dispatcher.
+            var data = SynchronizationContext.Current is System.Windows.Threading.DispatcherSynchronizationContext
+                ? await Task.Run(store.LoadAsync) : await store.LoadAsync();
             settings = data.Settings; EmulatorPath = settings.EmulatorPath; Fullscreen = settings.Fullscreen;
-            await RestoreCoverLinksAsync();
-            RefreshStorageSettings(); RefreshVersions();
-            writable = true; RestoreSession();
+            if (string.IsNullOrWhiteSpace(settings.GameCollectionRoot))
+                settings.GameCollectionRoot = data.Games.Select(g => g.CollectionRoot).FirstOrDefault(r => !string.IsNullOrWhiteSpace(r)) ?? "";
+            RefreshStorageSettings();
+            // Apply the saved language before sorting and selecting the first page.
             RestoreAppearance();
+            if (showLoadingWindow != null) await showLoadingWindow();
+            // Saved metadata is sufficient for browsing. Do not wait for collection-drive scans.
+            foreach (var game in data.Games) { if (string.IsNullOrEmpty(game.OriginalTitle)) game.OriginalTitle = game.Title; Games.Add(game); }
+            RefreshVersions();
+            writable = true; RestoreSession();
             Status = Games.Count == 0 ? "Welcome. Import a game to start your collection." : "Library loaded.";
         }
         catch (Exception ex) { Status = $"Could not load the library: {ex.Message} Saved data has been preserved. Repair library.json, then restart."; }
         finally { initializing=false; Notify(nameof(IsLoading)); }
+        if(writable && backgroundFileChecks)BackgroundLibraryTask=RefreshLibraryFilesAsync();
     }
     private async Task RunAsync(Func<Task> action)
     {
@@ -192,9 +205,8 @@ public sealed partial class MainViewModel : Observable
         return ActiveFilter?.Key switch
         {
             "favorites" => game.IsFavorite,
-            "unsorted" => game.IsUnsorted,
             "recent" => game.LastPlayed.HasValue,
-            "available" => System.IO.File.Exists(game.ExecutablePath),
+            "available" => backgroundFileChecks ? game.KnownStartupFileExists==true : System.IO.File.Exists(game.ExecutablePath),
             null or "all" => true,
             _ => game.Genre == ActiveFilter.Label
         };
@@ -206,6 +218,8 @@ public sealed partial class MainViewModel : Observable
             : SortIndex == 1 ? matches.OrderByDescending(g => g.DisplayTitle) : matches.OrderBy(g => g.DisplayTitle);
         var results = ordered.ToList(); filteredCount = results.Count;
         pageIndex = Math.Min(pageIndex, Math.Max(0, (filteredCount - 1) / PageSize));
+        if (ShowDetails && selected is {} editingGame && results.IndexOf(editingGame) is var editingIndex && editingIndex >= 0)
+            pageIndex = editingIndex / PageSize;
         var nextPage=results.Skip(pageIndex * PageSize).Take(PageSize).ToList();
         void UpdatePage()
         {
@@ -213,14 +227,16 @@ public sealed partial class MainViewModel : Observable
             for(var i=pageGames.Count-1;i>=0;i--)if(!ids.Contains(pageGames[i].Id))pageGames.RemoveAt(i);
             foreach(var game in nextPage)if(!pageGames.Contains(game))pageGames.Add(game);
         }
-        if(incremental)UpdatePage();
-        else
+        refreshingGamePage = true;
+        try
         {
             UpdatePage();
-            Library.Refresh();
+            if (!incremental) Library.Refresh();
         }
+        finally { refreshingGamePage = false; }
+        if (selectionWriteSuppressed) { selectionWriteSuppressed = false; Notify(nameof(SelectedGame)); }
         Notify(nameof(EmptyLibrary)); Notify(nameof(HasVisibleGames)); Notify(nameof(CanScanGames)); Notify(nameof(VisibleCount)); Notify(nameof(VisibleCountText)); Notify(nameof(PageLabel)); NotifyPagination();
-        if (SelectedGame is null || !Library.Contains(SelectedGame)) SelectedGame = Library.Cast<GameEntry>().FirstOrDefault();
+        if (!initializing && !ShowDetails && (SelectedGame is null || !Library.Contains(SelectedGame))) SelectedGame = Library.Cast<GameEntry>().FirstOrDefault();
     }
     private void ApplySort()
     {
@@ -239,9 +255,8 @@ public sealed partial class MainViewModel : Observable
         CollectionFilters.Clear();
         CollectionFilters.Add(new("all", "All Games", Games.Count));
         CollectionFilters.Add(new("favorites", "Favorites", Games.Count(g => g.IsFavorite)));
-        CollectionFilters.Add(new("unsorted", "Unsorted", Games.Count(g => g.IsUnsorted)));
         CollectionFilters.Add(new("recent", "Recently Played", Games.Count(g => g.LastPlayed.HasValue)));
-        CollectionFilters.Add(new("available", "Available", Games.Count(g => System.IO.File.Exists(g.ExecutablePath))));
+        CollectionFilters.Add(new("available", "Available", Games.Count(g => backgroundFileChecks ? g.KnownStartupFileExists==true : System.IO.File.Exists(g.ExecutablePath))));
         GenreFilters.Clear();
         foreach (var group in Games.GroupBy(g => g.Genre).OrderBy(g => g.Key)) GenreFilters.Add(new("genre:" + group.Key, group.Key, group.Count()));
         var genreKey = genreSelection?.Key ?? settings.GenreKey;
@@ -277,7 +292,7 @@ public sealed partial class MainViewModel : Observable
             finally {NavigationReturned?.Invoke("favorites");IsUpdatingFavorites=false;}
         }
     }
-    private void NotifyNavigation() { Notify(nameof(GamesHeading)); Notify(nameof(IsLibraryPage)); Notify(nameof(IsFavoritesPage)); Notify(nameof(IsUnsortedPage)); }
+    private void NotifyNavigation() { Notify(nameof(GamesHeading)); Notify(nameof(IsLibraryPage)); Notify(nameof(IsFavoritesPage)); }
     private async Task ImportAsync()
     {
         var paths = dialogs.PickGames();
@@ -318,9 +333,12 @@ public sealed partial class MainViewModel : Observable
             throw new InvalidOperationException("Choose an existing DOSBox EXE file, or leave it empty for collection discovery.");
         var oldPath = settings.EmulatorPath; var oldFullscreen = settings.Fullscreen;
         settings.EmulatorPath = EmulatorPath; settings.Fullscreen = Fullscreen;
-        try { await PersistAsync(); } catch { settings.EmulatorPath = oldPath; settings.Fullscreen = oldFullscreen; throw; }
-        RefreshReadiness();
-        Status = "Emulator settings saved.";
+        try { await PersistSettingsAsync(); } catch { settings.EmulatorPath = oldPath; settings.Fullscreen = oldFullscreen; throw; }
+        if(oldPath!=EmulatorPath || oldFullscreen!=Fullscreen)
+        {
+            RefreshReadiness();
+            Status = "Emulator settings saved.";
+        }
     }
     private async Task PlayAsync()
     {
@@ -330,8 +348,10 @@ public sealed partial class MainViewModel : Observable
         await Task.Run(() => emulator.Launch(game, settings));
         game.LastPlayed = DateTimeOffset.UtcNow;
         var key=ActiveFilter?.Key??"all";
-        NavigationLeaving?.Invoke(key);
-        if(SortIndex==2)pageIndex=0;
+        var reorderAfterLaunch=SortIndex==2;
+        var refreshAfterLaunch=reorderAfterLaunch || key=="recent";
+        if(refreshAfterLaunch)NavigationLeaving?.Invoke(key);
+        if(reorderAfterLaunch)pageIndex=0;
         var recent=CollectionFilters.FirstOrDefault(f=>f.Key=="recent");
         if(recent!=null)
         {
@@ -339,9 +359,12 @@ public sealed partial class MainViewModel : Observable
             CollectionFilters[CollectionFilters.IndexOf(recent)]=updated;
             if(ActiveFilter?.Key=="recent")activeFilter=updated;
         }
-        RefreshView();
-        if(Library.Contains(game))SelectedGame=game;
-        NavigationReturned?.Invoke(key);
+        if(refreshAfterLaunch)
+        {
+            RefreshView();
+            if(Library.Contains(game))SelectedGame=game;
+            NavigationReturned?.Invoke(key);
+        }
         try { await PersistAsync(); Status = $"Launched {game.Title}. Enjoy your game."; }
         catch (Exception ex) { Status = $"Game launched, but the last-played date could not be saved: {ex.Message}"; }
     }

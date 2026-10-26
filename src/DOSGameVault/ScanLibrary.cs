@@ -3,8 +3,6 @@ namespace DOSGameVault;
 public sealed partial class MainViewModel
 {
     public ICommand ScanGamesCommand {get;private set;}=null!;
-    public ICommand UnsortedPageCommand => new RelayCommand(_=>{ShowSettings=false;ShowDetails=false;ActiveFilter=CollectionFilters.FirstOrDefault(f=>f.Key=="unsorted");NotifyNavigation();});
-    public bool IsUnsortedPage=>!ShowAbout && !ShowSettings && ActiveFilter?.Key=="unsorted";
     public bool CanScanGames => CanFindDosBox || HasVisibleGames;
     private bool scanning;
     public string ScanButtonText=>scanning?"Scanning…":settings.HasScannedGameFolder?"Rescan":"Scan";
@@ -40,7 +38,7 @@ public sealed partial class MainViewModel
             }
             await RememberCoverLinksAsync();
             RefreshVersions();UpdateLibrary();LoadGameEdits();Notify(nameof(SelectedGame));RefreshReadiness();
-            AutoSaveMessage=Status=$"Scan complete: {result.Matched} recognized games added, {result.Unsorted} folders added to Unsorted. {result.SkippedFolders} inaccessible folders skipped.";
+            AutoSaveMessage=Status=$"Scan complete: {result.Matched} recognized games added, {result.Unknown} unknown games added. {result.SkippedFolders} inaccessible folders skipped.";
             scanning=false;Notify(nameof(ScanButtonText));
             loading.Dispose();
             dialogs.ShowScanResults(result, Games.Count);

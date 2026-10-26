@@ -37,10 +37,36 @@ public static class CollectionLaunch
         return names.Select(name => files.FirstOrDefault(f => Path.GetFileName(f).Equals(name, StringComparison.OrdinalIgnoreCase))).FirstOrDefault(f => f != null);
     }
 
+    internal static IReadOnlyList<string> ConfigurationFiles(GameEntry game,AppSettings settings,DosBoxOptions options,string executable)
+    {
+        var files=new List<string>();
+        var registrationKey=string.IsNullOrWhiteSpace(game.EmulatorVersion) ? options.Emulator ?? (string.IsNullOrWhiteSpace(settings.DefaultEmulatorKey) ? "DOSBOX" : settings.DefaultEmulatorKey) : game.EmulatorVersion;
+        var registered=settings.Emulators.FirstOrDefault(e=>e.Key.Equals(registrationKey,StringComparison.OrdinalIgnoreCase) && e.ExecutablePath.Equals(executable,StringComparison.OrdinalIgnoreCase));
+        if(registered is {ConfigPath.Length:>0})
+        {
+            if(!File.Exists(registered.ConfigPath))throw new FileNotFoundException("The registered DOSBox configuration file is missing.",registered.ConfigPath);
+            files.Add(registered.ConfigPath);
+        }
+        if(options.Custom)
+        {
+            var directory=Path.GetDirectoryName(Path.GetFullPath(game.ExecutablePath))!;
+            var config=new[] {"game.conf","dosbox.conf","dosbox.cfg"}.Select(name=>Path.Combine(directory,name)).FirstOrDefault(File.Exists);
+            if(config==null)throw new FileNotFoundException("This row requests CUSTOM. Provide its original game.conf, dosbox.conf or dosbox.cfg in the game folder.");
+            files.Add(config);
+        }
+        if(game.LaunchProfile is {ConfigPath.Length:>0} profile)
+        {
+            if(!Path.IsPathFullyQualified(profile.ConfigPath) || !File.Exists(profile.ConfigPath))
+                throw new FileNotFoundException("Choose an existing DOSBox configuration file, or clear the configuration override.",profile.ConfigPath);
+            files.Add(profile.ConfigPath);
+        }
+        return files;
+    }
+
     public static ProcessStartInfo Build(GameEntry game, AppSettings settings)
     {
         if (!File.Exists(game.ExecutablePath)) throw new FileNotFoundException("The game's startup file is missing. Check the collection folder.", game.ExecutablePath);
-        var options = DosBoxOptions.Parse(game.LaunchProfile?.Options ?? game.DosBoxOptions);
+        var options = DosBoxOptions.Parse(game.LaunchProfile?.Options ?? game.DosBoxOptions,tolerateLegacy:game.LaunchProfile==null);
         if (options.Warnings.Count != 0) throw new InvalidDataException(string.Join(" ", options.Warnings));
         var executable = ResolveForGame(game, settings, options);
         if (!File.Exists(executable)) throw new FileNotFoundException("The per-game DOSBox executable is missing.", executable);
@@ -48,20 +74,18 @@ public static class CollectionLaunch
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
         if (game.LaunchProfile?.Fullscreen ?? settings.Fullscreen) info.ArgumentList.Add("-fullscreen");
         void Command(string command) { info.ArgumentList.Add("-c"); info.ArgumentList.Add(command); }
-        var registrationKey = string.IsNullOrWhiteSpace(game.EmulatorVersion) ? options.Emulator ?? (string.IsNullOrWhiteSpace(settings.DefaultEmulatorKey) ? "DOSBOX" : settings.DefaultEmulatorKey) : game.EmulatorVersion;
-        var registered = settings.Emulators.FirstOrDefault(e => e.Key.Equals(registrationKey, StringComparison.OrdinalIgnoreCase) && e.ExecutablePath.Equals(executable, StringComparison.OrdinalIgnoreCase));
-        if (registered is { ConfigPath.Length: > 0 })
+        foreach(var config in ConfigurationFiles(game,settings,options,executable))
+        {info.ArgumentList.Add("-conf");info.ArgumentList.Add(config);}
+        var configuration=DosBoxLaunchConfig.Contents(game,settings.Fullscreen);
+        if(configuration.Length>0) {info.ArgumentList.Add("-conf");info.ArgumentList.Add(DosBoxLaunchConfig.PathFor(configuration));}
+        if(game.LaunchProfile?.SkipAutoexec==true)info.ArgumentList.Add("-noautoexec");
+        foreach (var setting in options.Settings)
         {
-            if (!File.Exists(registered.ConfigPath)) throw new FileNotFoundException("The registered DOSBox configuration file is missing.", registered.ConfigPath);
-            info.ArgumentList.Add("-conf"); info.ArgumentList.Add(registered.ConfigPath);
+            // Profiles load all values at startup. Keep the legacy runtime commands
+            // for mutable CPU/memory options; hardware initialization is not mutable.
+            var key=setting[..setting.IndexOf('=')];
+            if(game.LaunchProfile==null || key is "cycles" or "core" or "ems" or "xms" or "umb")Command("config -set " + setting);
         }
-        if (options.Custom)
-        {
-            var configs = new[] { "dosbox.conf", "dosbox.cfg" }.Select(name => Path.Combine(directory, name)).Where(File.Exists).ToArray();
-            if (configs.Length == 0) throw new FileNotFoundException("This row requests CUSTOM. Provide its original dosbox.conf or dosbox.cfg in the game folder.");
-            info.ArgumentList.Add("-conf"); info.ArgumentList.Add(configs[0]);
-        }
-        foreach (var setting in options.Settings) Command("config -set " + setting);
         Command($"mount c {Quote(directory)}");
         var mediaType = game.LaunchProfile?.MediaType ?? game.MediaType;
         var mediaPath = game.LaunchProfile?.MediaPath ?? game.MediaPath;
@@ -81,11 +105,14 @@ public static class CollectionLaunch
                 var drive = mediaPath.ToLowerInvariant() is "a" or "b" ? mediaPath.ToLowerInvariant() : "a";
                 Command($"mount {drive} {Quote(directory)} -t floppy");
                 Command(drive + ":");
-                Command(ProgramName(game.ExecutablePath)); return info;
+                Command(ProgramName(game.ExecutablePath));
+                if(game.LaunchProfile?.ExitAfterGame==true)Command("exit");
+                return info;
             default: throw new InvalidDataException($"Unresolved media mode '{mediaType}'. Set its media mode in Game Settings.");
         }
         Command("c:");
         Command(ProgramName(game.ExecutablePath));
+        if(game.LaunchProfile?.ExitAfterGame==true)Command("exit");
         return info;
     }
 

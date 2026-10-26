@@ -20,10 +20,22 @@ public partial class App : Application
         });
         var vm = new MainViewModel(new JsonStore(), new DosBoxStagingAdapter(), new DesktopDialogs());
         var window = new MainWindow { DataContext = vm };
+        var windowClosed=false;
+        window.Closed+=(_,_)=>windowClosed=true;
         MainWindow = window;
-        await vm.InitializeAsync();
-        window.RestorePreferences();
-        await WindowWorkArea.ShowReadyAsync(window);
+        await vm.InitializeAsync(async () =>
+        {
+            window.RestorePreferences();
+            await WindowWorkArea.ShowReadyAsync(window);
+        });
+        if (windowClosed || Dispatcher.HasShutdownStarted) return;
+        // Loading failures still need a visible window with the recovery message.
+        if (!window.IsVisible && !Dispatcher.HasShutdownStarted)
+        {
+            window.RestorePreferences();
+            await WindowWorkArea.ShowReadyAsync(window);
+        }
+        if (Dispatcher.HasShutdownStarted) return;
         if (activationPending) ActivateWindow();
         if (vm.NeedsFirstLaunchGuide) ModalWindows.Show(new FirstLaunchGuide(vm) { Owner=window });
     }

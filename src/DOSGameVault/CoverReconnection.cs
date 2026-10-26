@@ -33,22 +33,4 @@ public sealed partial class MainViewModel
         if(links.Count==0 || string.IsNullOrWhiteSpace(folder))return Task.CompletedTask;
         return Task.Run(()=> { PreviewStorage.WriteIndex(folder,Games); });
     }
-    private async Task RestoreCoverLinksAsync()
-    {
-        var links=await FindCoverLinksAsync(Games);
-        foreach(var link in links)link.Key.CoverOverride=link.Value;
-        var changed=links.Count>0;
-        if(!string.IsNullOrWhiteSpace(GameCoverFolder))
-        {
-            changed|=RestorePreviewLinks(Games);
-            foreach(var game in Games) changed|=PreviewStorage.Normalize(game,GameCoverFolder);
-        }
-        if(changed)
-        {
-            var rollback=PreviewStorage.WriteIndex(GameCoverFolder,Games);
-            try { await store.SaveAsync(new LibraryData{Games=Games.ToList(),Settings=settings}); }
-            catch { rollback(); throw; }
-        }
-        await RememberCoverLinksAsync();
-    }
 }

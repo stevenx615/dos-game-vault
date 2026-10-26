@@ -42,7 +42,11 @@ public static class DeveloperCatalog
         var temporary=path+"."+Guid.NewGuid().ToString("N")+".tmp";
         try
         {
-            File.WriteAllText(temporary,JsonSerializer.Serialize(data,new JsonSerializerOptions{WriteIndented=true}));
+            File.WriteAllText(temporary,JsonSerializer.Serialize(data,new JsonSerializerOptions
+            {
+                WriteIndented=true,
+                Encoder=System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All)
+            }));
             if(File.Exists(path))File.Replace(temporary,path,path+".before-dev-update-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff")+".bak");
             else File.Move(temporary,path);
         }
@@ -56,13 +60,13 @@ public sealed partial class MainViewModel
         if(!await FlushGameEditsAsync())return;
         var data=DeveloperCatalog.Create(Games,settings);
         var source=typeof(App).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(attribute=>attribute.Key=="DeveloperCatalogPath")?.Value;
-        if(source==null || !File.Exists(source))throw new FileNotFoundException("The catalog source is unavailable. Run a Debug build from the development workspace.");
-        var prompt=new DosBoxPromptDialog("Update built-in game list?",$"Replace the built-in catalog source with the current {data.Games.Count} games? A backup will be saved first. Rebuild Release to include the updated catalog.\n\n{source}","Update catalog",destructive:true);
+        if(source==null || !File.Exists(source))throw new FileNotFoundException(Localization.Current["DevCatalogSourceMissing"]);
+        var prompt=new DosBoxPromptDialog(Localization.Current["DevCatalogConfirmTitle"],string.Format(Localization.Current["DevCatalogConfirmBody"],data.Games.Count,source),Localization.Current["DevCatalogConfirmAction"],destructive:true);
         if(Application.Current?.MainWindow is {} owner)prompt.Owner=owner;
         if(ModalWindows.Show(prompt)!=true)return;
         DeveloperCatalog.Write(source,data);
         DeveloperCatalog.Write(Path.Combine(AppContext.BaseDirectory,"game-list.development.json"),data);
-        AutoSaveMessage=Status=$"Built-in game list updated with {data.Games.Count} games. Rebuild Release to embed it.";
+        AutoSaveMessage=Status=string.Format(Localization.Current["DevCatalogSaved"],data.Games.Count);
     }));
 }
 #endif

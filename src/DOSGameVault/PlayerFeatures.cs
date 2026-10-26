@@ -20,6 +20,12 @@ public sealed partial class MainViewModel
     private string editEnglishName="", editChineseName="";
     public string EditEnglishName { get=>editEnglishName; set { Set(ref editEnglishName,value); ScheduleGameSave(); } }
     public string EditChineseName { get=>editChineseName; set { Set(ref editChineseName,value); ScheduleGameSave(); } }
+    private string editReleaseYear="";
+    public string EditReleaseYear { get=>editReleaseYear; set { Set(ref editReleaseYear,value); ScheduleGameSave(); } }
+    private string editDeveloper="";
+    public string EditDeveloper { get=>editDeveloper; set { Set(ref editDeveloper,value); ScheduleGameSave(); } }
+    private string editPublisher="";
+    public string EditPublisher { get=>editPublisher; set { Set(ref editPublisher,value); ScheduleGameSave(); } }
     private string editAlternateTitle = "";
     public string EditAlternateTitle { get => editAlternateTitle; set { Set(ref editAlternateTitle, value); ScheduleGameSave(); } }
     private string editControls = "";
@@ -39,13 +45,23 @@ public sealed partial class MainViewModel
     private bool? editGameFullscreen;
     public bool? EditGameFullscreen { get => editGameFullscreen; set { Set(ref editGameFullscreen, value); ScheduleGameSave(); } }
     private string editCycles = "";
-    public string EditCycles { get => editCycles; set { Set(ref editCycles, value); ScheduleGameSave(); } }
+    public string EditCycles { get => editCycles; set { Set(ref editCycles, value); Notify(nameof(CyclePresetSelection)); ScheduleGameSave(); } }
     private string editMediaType = "no";
-    public string EditMediaType { get => editMediaType; set { Set(ref editMediaType, value); ScheduleGameSave(); } }
+    public string EditMediaType { get => editMediaType; set {
+        if(editMediaType==value)return;
+        Set(ref editMediaType,value);
+        if(!loadingGameEdits)
+        {
+            if(value=="floppy")EditMediaPath="a";
+            else if(value=="no")EditMediaPath="no";
+            else if(EditMediaPath is "no" or "a" or "b")EditMediaPath="";
+        }
+        ScheduleGameSave();
+    } }
     private string editMediaPath = "no";
     public string EditMediaPath { get => editMediaPath; set { Set(ref editMediaPath, value); ScheduleGameSave(); } }
     private string editOptions = "";
-    public string EditOptions { get => editOptions; set { Set(ref editOptions, value); ScheduleGameSave(); } }
+    public string EditOptions { get => editOptions; set { Set(ref editOptions, value); NotifyLaunchOptionEditors(); ScheduleGameSave(); } }
     public string JumpText { get; set; } = "";
     public string LaunchStatus { get; private set; } = "Select a game";
     public string LaunchExplanation { get; private set; } = "";
@@ -83,6 +99,7 @@ public sealed partial class MainViewModel
         {
             UseGameOverrides = true; EditOptions = ""; EditCycles = ""; EditGameEmulator = "";
             EditMediaType = "no"; EditMediaPath = "no"; EditGameFullscreen = null;
+            EditLaunchConfig="";EditExitAfterGame=false;EditSkipAutoexec=false;
             Notify(string.Empty); Status = "Basic DOSBox profile prepared. Changes save automatically.";
         });
         RecheckCommand = new RelayCommand(_ => RefreshReadiness());
@@ -104,10 +121,12 @@ public sealed partial class MainViewModel
         loadingGameEdits = true;
         try {
         var game = SelectedGame;
+        description=game?.Description ?? "";chineseDescriptionDraft=game?.ChineseDescription ?? "";Notify(nameof(EditDescription));
         var category=GenreCatalog.Key(game?.Category);
         var genre=EditGenreChoices.FirstOrDefault(choice=>choice.Key.Equals(category,StringComparison.OrdinalIgnoreCase));
         if(genre==null) { genre=new(category,game!.Genre,0);EditGenreChoices.Add(genre); }
         EditCategory=genre.Key;
+        EditReleaseYear=game?.ReleaseYear ?? ""; EditDeveloper=game?.Developer ?? ""; EditPublisher=game?.Publisher ?? "";
         EditEnglishName=game?.EnglishName ?? ""; EditChineseName=game?.ChineseName ?? "";
         EditAlternateTitle = game?.AlternateTitle ?? ""; EditControls = game?.Controls ?? ""; EditNotes = game?.Notes ?? "";
         EditCoverPath = game?.CoverOverride ?? ""; EditManualPath = game?.ManualPath ?? "";
@@ -118,9 +137,26 @@ public sealed partial class MainViewModel
             GameVersionChoices.Add(new() { Key = game.EmulatorVersion, Name = "Missing registration: " + game.EmulatorVersion });
         GameVersionSelection = GameVersionChoices.FirstOrDefault(e => e.Key.Equals(game?.EmulatorVersion ?? "", StringComparison.OrdinalIgnoreCase));
         EditGameFullscreen = game?.LaunchProfile?.Fullscreen;
+        EditLaunchConfig=game?.LaunchProfile?.ConfigPath ?? "";
+        EditExitAfterGame=game?.LaunchProfile?.ExitAfterGame ?? false;
+        EditSkipAutoexec=game?.LaunchProfile?.SkipAutoexec ?? false;
+        Notify(nameof(EditFullscreenMode));
         EditMediaType = game?.LaunchProfile?.MediaType ?? game?.MediaType ?? "no";
         EditMediaPath = game?.LaunchProfile?.MediaPath ?? game?.MediaPath ?? "no";
         var options = (game?.LaunchProfile?.Options ?? game?.DosBoxOptions ?? []).ToList();
+        var imported=DosBoxOptions.Parse(options.ToArray(),tolerateLegacy:game?.LaunchProfile==null);
+        if(game?.LaunchProfile==null && imported.Warnings.Count==0)
+        {
+            // Normalize only the editable draft; retain the original imported row.
+            options=imported.Settings.SelectMany(setting=>
+            {
+                var split=setting.IndexOf('=');var key=setting[..split];
+                return new[] {key=="cycles" ? "cpucy" : key,setting[(split+1)..]};
+            }).ToList();
+            if(imported.Emulator!=null)options.Add(imported.Emulator);
+            if(imported.Custom)options.Add("custom");
+        }
+        LoadOriginalLaunchDefaults(game,options);
         EditCycles = "";
         for (var i = 0; i < options.Count - 1; i++)
             if (options[i].Equals("cpucy", StringComparison.OrdinalIgnoreCase)) { EditCycles = options[i + 1]; options.RemoveRange(i, 2); break; }
@@ -134,6 +170,7 @@ public sealed partial class MainViewModel
         Notify(nameof(ShowSetupGuideButton));
         IsReady = false; SelectedEmulator = ""; LaunchExplanation = "";
         SelectedGame?.RefreshStartupFileStatus();
+        RefreshAvailableFilter();
         if (SelectedGame is not { } game) LaunchStatus = "Select a game";
         else
         {
@@ -142,6 +179,12 @@ public sealed partial class MainViewModel
                 var info = emulator.BuildStartInfo(game, settings);
                 SelectedEmulator = info.FileName; IsReady = true; LaunchStatus = "● Ready";
                 LaunchExplanation = "Double-click or press Enter in the library to play.";
+                if(game.LaunchProfile==null)
+                {
+                    var imported=DosBoxOptions.Parse(game.DosBoxOptions,tolerateLegacy:true);
+                    if(imported.Notices.Count>0)
+                        LaunchExplanation=Localization.Current.Translate(LaunchExplanation)+" "+string.Join(" ",imported.Notices.Select(Localization.Current.Translate));
+                }
             }
             catch (Exception ex)
             {
@@ -168,13 +211,18 @@ public sealed partial class MainViewModel
         {
             if (!string.IsNullOrWhiteSpace(EditGameEmulator) && (!Path.IsPathFullyQualified(EditGameEmulator) || !File.Exists(EditGameEmulator) || !Path.GetExtension(EditGameEmulator).Equals(".exe", StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("Choose an existing DOSBox EXE or leave the override empty.");
-            var tokens = EditOptions.Split(',', StringSplitOptions.TrimEntries).ToList();
+            var tokens = EditOptions.Split(',', StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries).ToList();
             if (!string.IsNullOrWhiteSpace(EditCycles)) { tokens.Add("cpucy"); tokens.Add(EditCycles.Trim()); }
             var options = DosBoxOptions.Parse(tokens.ToArray());
             if (options.Warnings.Count > 0) throw new InvalidOperationException(string.Join(" ", options.Warnings));
             if (EditMediaType.Trim().ToLowerInvariant() is not ("no" or "img" or "cdrom" or "floppy" or ""))
                 throw new InvalidOperationException("Media mode must be no, img, cdrom, or floppy.");
+            if(!string.IsNullOrWhiteSpace(EditLaunchConfig) && (!Path.IsPathFullyQualified(EditLaunchConfig) || !File.Exists(EditLaunchConfig)))
+                throw new InvalidOperationException("Choose an existing DOSBox configuration file, or clear the configuration override.");
+            if(EditMediaType.Trim().Equals("floppy",StringComparison.OrdinalIgnoreCase) && EditMediaPath.Trim().ToLowerInvariant() is not ("a" or "b" or "no" or ""))
+                throw new InvalidOperationException("For a floppy folder, choose drive A or B. Disk images require a custom DOSBox configuration.");
             profile = new() { EmulatorPath = EditGameEmulator.Trim(), Fullscreen = EditGameFullscreen,
+                ConfigPath=EditLaunchConfig.Trim(),ExitAfterGame=EditExitAfterGame,SkipAutoexec=EditSkipAutoexec,
                 Options = tokens.ToArray(), MediaType = EditMediaType.Trim().ToLowerInvariant(), MediaPath = EditMediaPath.Trim() };
         }
         var coverPath=EditCoverPath.Trim();
@@ -183,10 +231,12 @@ public sealed partial class MainViewModel
             if(string.IsNullOrWhiteSpace(GameCoverFolder)) throw new InvalidOperationException("Choose a game collection folder or game cover folder in Settings before adding a cover image.");
             coverPath=PreviewStorage.Copy(coverPath,GameCoverFolder,string.IsNullOrWhiteSpace(EditEnglishName) ? game.FolderName : EditEnglishName.Trim());
         }
+        var previousDisplayTitle=game.DisplayTitle;
         var backup = JsonSerializer.Deserialize<GameEntry>(JsonSerializer.Serialize(game))!;
         game.EmulatorVersion = GameVersionSelection?.Key ?? "";
+        game.ReleaseYear=EditReleaseYear.Trim();game.Developer=EditDeveloper.Trim();game.Publisher=EditPublisher.Trim();
         game.EnglishName=EditEnglishName.Trim();game.ChineseName=EditChineseName.Trim();
-        game.Title = EditTitle.Trim(); game.Description = EditDescription; game.AlternateTitle = EditAlternateTitle.Trim();
+        game.Title = EditTitle.Trim(); game.Description = description; game.ChineseDescription = chineseDescriptionDraft; game.AlternateTitle = EditAlternateTitle.Trim();
         if(!GenreCatalog.Key(game.Category).Equals(EditCategory,StringComparison.OrdinalIgnoreCase))game.Category = EditCategory;
         game.Controls = EditControls; game.Notes = EditNotes; game.ManualPath = EditManualPath.Trim(); game.CoverOverride = coverPath;
         game.ExecutablePath = EditExecutablePath.Trim(); game.LaunchProfile = profile;
@@ -196,7 +246,15 @@ public sealed partial class MainViewModel
             var index = Games.IndexOf(game); Games[index] = backup; SelectedGame = backup; UpdateLibrary(); throw;
         }
         if(!gameEditsPending) { editCoverPath=coverPath; Notify(nameof(EditCoverPath)); }
-        UpdateLibrary(); if (reload) LoadGameEdits(); Notify(nameof(SelectedGame)); Status = "Game details and launch settings saved.";
+        if(ShowDetails && game.DisplayTitle!=previousDisplayTitle)scrollToRenamedGame=true;
+        // A collection-view reset also resets the list's scroll offset. Launch-only
+        // edits do not affect membership or ordering, so keep the current view intact.
+        var affectsLibrary=game.Title!=backup.Title || game.EnglishName!=backup.EnglishName || game.ChineseName!=backup.ChineseName
+            || game.AlternateTitle!=backup.AlternateTitle || game.Description!=backup.Description || game.Category!=backup.Category
+            || game.ExecutablePath!=backup.ExecutablePath || game.CoverOverride!=backup.CoverOverride;
+        if(affectsLibrary)UpdateLibrary();
+        if (reload) LoadGameEdits(); else RefreshReadiness();
+        Notify(nameof(SelectedGame)); Status = "Game details and launch settings saved.";
     }
     private void RestoreSession()
     {
@@ -220,15 +278,30 @@ public sealed partial class MainViewModel
                 : new(nameof(GameEntry.DisplayTitle), SortIndex == 1 ? System.ComponentModel.ListSortDirection.Descending : System.ComponentModel.ListSortDirection.Ascending));
         }
     }
+    private void CaptureSessionSettings()
+    {
+        settings.IsListView = IsListView; settings.SortIndex = SortIndex; settings.FilterKey = ActiveFilter?.Key ?? "all";
+        settings.Search = Search; settings.PageSize = PageSize; settings.PageIndex = pageIndex; settings.SelectedGameId = SelectedGame?.Id; settings.CardWidth = CardWidth; settings.GridColumns=GridColumns; settings.GameCardSize=GameCardSize;
+        settings.GenreKey = GenreSelection?.Key ?? "allgenres";
+        settings.ShowGameInfoPanel = ShowGameInfoPanel; settings.ShowGameTitles = ShowGameTitles; settings.IsSidebarExpanded=IsSidebarExpanded; settings.ShowBlurredCoverBackground=ShowBlurredCoverBackground; settings.UiScale = UiScale;
+    }
+    private async Task PersistSettingsAsync()
+    {
+        await saveLock.WaitAsync();
+        try
+        {
+            CaptureSessionSettings();
+            if(store is ISettingsStore settingsStore)await settingsStore.SaveSettingsAsync(settings);
+            else await store.SaveAsync(new LibraryData{Games=Games.ToList(),Settings=settings});
+        }
+        finally{saveLock.Release();}
+    }
     private async Task PersistAsync()
     {
         await saveLock.WaitAsync();
         try
         {
-            settings.IsListView = IsListView; settings.SortIndex = SortIndex; settings.FilterKey = ActiveFilter?.Key ?? "all";
-            settings.Search = Search; settings.PageSize = PageSize; settings.PageIndex = pageIndex; settings.SelectedGameId = SelectedGame?.Id; settings.CardWidth = CardWidth; settings.GridColumns=GridColumns; settings.GameCardSize=GameCardSize;
-            settings.GenreKey = GenreSelection?.Key ?? "allgenres";
-            settings.ShowGameInfoPanel = ShowGameInfoPanel; settings.ShowGameTitles = ShowGameTitles; settings.IsSidebarExpanded=IsSidebarExpanded; settings.ShowBlurredCoverBackground=ShowBlurredCoverBackground; settings.UiScale = UiScale;
+            CaptureSessionSettings();
             var rollbackIndex = PreviewStorage.WriteIndex(GameCoverFolder, Games);
             try { await store.SaveAsync(new LibraryData { Games = Games.ToList(), Settings = settings }); }
             catch { rollbackIndex(); throw; }
@@ -238,6 +311,7 @@ public sealed partial class MainViewModel
     public (double Width, double Height, bool Maximized) WindowPreferences => (settings.WindowWidth, settings.WindowHeight, settings.Maximized);
     public async Task<bool> SaveSessionAsync(double width, double height, bool maximized)
     {
+        startupFileChecks.Cancel();
         if (!writable) return true;
         while (busy) await Task.Delay(25);
         settings.WindowWidth = width; settings.WindowHeight = height; settings.Maximized = maximized;

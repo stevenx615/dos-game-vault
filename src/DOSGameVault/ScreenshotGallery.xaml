@@ -14,7 +14,7 @@
    <TextBlock x:Name="Counter" HorizontalAlignment="Center" VerticalAlignment="Bottom" Background="#CC101221" Padding="8,3"/>
   </Grid>
   </local:RoundedBorder>
-  <ScrollViewer x:Name="DetailThumbnails" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,8,0,0">
+  <ScrollViewer x:Name="DetailThumbnails" MouseMove="ThumbnailPointerMoved" MouseLeave="ThumbnailPointerLeft" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Margin="0,8,0,0">
    <StackPanel x:Name="ThumbnailStrip" Orientation="Horizontal"/>
   </ScrollViewer>
   <Border x:Name="DropArea" Visibility="Collapsed" Margin="0,14,0,0" AllowDrop="True" DragOver="ImagesDragOver" DragLeave="ImagesDragLeave" Drop="ImagesDrop" Background="Transparent" CornerRadius="12" Padding="0">
